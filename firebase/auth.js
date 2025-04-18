@@ -4,14 +4,19 @@ import {
   signOut,
   sendEmailVerification,
   GoogleAuthProvider,
-  signInWithPopup,
+  signInWithCredential,
 } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { create } from "zustand";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { auth, db } from "../firebase/firebaseConfig";
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 
-const googleProvider = new GoogleAuthProvider();
+// Configure Google Sign-In
+GoogleSignin.configure({
+  webClientId: '52639531068-qqvlqbqvvvvvvvvvvvvvvvvvvvvvvvvv.apps.googleusercontent.com', // Get this from your Firebase console
+  offlineAccess: true,
+});
 
 export const useAuth = create((set, get) => ({
   user: null,
@@ -44,7 +49,11 @@ export const useAuth = create((set, get) => ({
 
   signInWithGoogle: async (navigation, selectedRole) => {
     try {
-      const result = await signInWithPopup(auth, googleProvider);
+      // Sign in with Google
+      await GoogleSignin.hasPlayServices();
+      const { idToken } = await GoogleSignin.signIn();
+      const credential = GoogleAuthProvider.credential(idToken);
+      const result = await signInWithCredential(auth, credential);
       const user = result.user;
       const token = await user.getIdToken();
 
@@ -56,7 +65,7 @@ export const useAuth = create((set, get) => ({
         // Create new user document if it doesn't exist
         await setDoc(userRef, {
           email: user.email,
-          role: selectedRole, // Use selected role from the UI
+          role: selectedRole,
           emailVerified: true,
         });
 
@@ -70,13 +79,13 @@ export const useAuth = create((set, get) => ({
 
         await AsyncStorage.setItem("user", JSON.stringify(user));
         await AsyncStorage.setItem("token", token);
-        await AsyncStorage.setItem("role", selectedRole); // Store selected role
+        await AsyncStorage.setItem("role", selectedRole);
         await AsyncStorage.setItem("profile", JSON.stringify(profileData));
 
         set({
           user,
           token,
-          role: selectedRole, // Use selected role in state
+          role: selectedRole,
           profile: profileData,
           error: null,
         });
@@ -106,12 +115,12 @@ export const useAuth = create((set, get) => ({
     } catch (err) {
       let errorMessage = "An error occurred during Google sign-in";
 
-      if (err.code === "auth/popup-closed-by-user") {
-        errorMessage = "Sign-in popup was closed before completing";
-      } else if (err.code === "auth/cancelled-popup-request") {
-        errorMessage = "Another sign-in popup is already open";
-      } else if (err.code === "auth/popup-blocked") {
-        errorMessage = "Sign-in popup was blocked by the browser";
+      if (err.code === "auth/invalid-credential") {
+        errorMessage = "Invalid credentials. Please try again.";
+      } else if (err.code === "auth/network-request-failed") {
+        errorMessage = "Network error. Please check your connection.";
+      } else if (err.code === "auth/user-disabled") {
+        errorMessage = "This account has been disabled.";
       }
 
       set({ error: errorMessage });

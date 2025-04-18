@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "52639531068",
+    "project_id": "home-customization-67874",
+    "storage_bucket": "home-customization-67874.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:52639531068:android:1e8824eb79ae65a07d0339",
+        "android_client_info": {
+          "package_name": "com.anonymous.finalmobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "52639531068-0a47dh2s704f1us1b72lsll42onsvap7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB_cJJFB0rMQoDJe3XiUpAi-5ady7kp_Tc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "52639531068-0a47dh2s704f1us1b72lsll42onsvap7.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

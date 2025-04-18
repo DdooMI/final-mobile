@@ -34,20 +34,26 @@ function Salah() {
   const navigation = useNavigation();
   const route = useRoute();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const role = route.params?.role;
   const spinValue = useRef(new Animated.Value(0)).current; // Animation value for rotation
 
-  const { login } = useAuth();
+  const [selectedRole, setSelectedRole] = useState(null);
+  const { login,signInWithGoogle } = useAuth();
 
   const onSubmit = async (values, { setSubmitting, validateForm, setTouched, setFieldError }) => {
+    if (!selectedRole) {
+      Alert.alert('Error', 'Please select a role before signing in');
+      return;
+    }
     const errors = await validateForm();
     if (Object.keys(errors).length > 0) {
-    setTouched({
-      email: true,
-      password: true
-    });
-    return;
-  }
+      setTouched({
+        email: true,
+        password: true
+      });
+      return;
+    }
 
     setSubmitting(true);
     // Start spinning animation
@@ -59,23 +65,26 @@ function Salah() {
       spinValue.setValue(0);
     });
     setIsSubmitting(true);
-    
+
 
     try {
-     await login(values, navigation);
-      
+      await login(values, navigation);
+
     } catch (error) {
       if (error.code === 'auth/invalid-email' || error.code === 'auth/user-not-found') {
-        setFieldError('email', error.message);
+        Alert.alert('Error', 'Incorrect email or password');
+        setFieldError('email', 'Incorrect email or password');
         setTouched({ email: true });
       } else if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
-        setFieldError('password', error.message);
+        Alert.alert('Error', 'Incorrect email or password');
+        setFieldError('password', 'Incorrect email or password');
         setTouched({ password: true });
       } else {
+        Alert.alert('Error', error.message);
         setFieldError('password', error.message);
         setTouched({ password: true });
       }
-    }finally {
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -94,6 +103,8 @@ function Salah() {
     >
       <View style={styles.container}>
         <Text style={styles.title}>Sign In</Text>
+
+
 
         <Formik
           initialValues={{
@@ -128,14 +139,26 @@ function Salah() {
                 <Text style={styles.error}>{errors.email}</Text>
               )}
 
-              <TextInput
-                placeholder="Password"
-                secureTextEntry
-                style={styles.input}
-                onChangeText={handleChange("password")}
-                onBlur={handleBlur("password")}
-                value={values.password}
-              />
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  placeholder="Password"
+                  secureTextEntry={!showPassword}
+                  style={[styles.input, styles.passwordInput]}
+                  onChangeText={handleChange("password")}
+                  onBlur={handleBlur("password")}
+                  value={values.password}
+                />
+                <TouchableOpacity
+                  style={styles.eyeIcon}
+                  onPress={() => setShowPassword(!showPassword)}
+                >
+                  <MaterialIcons
+                    name={showPassword ? "visibility" : "visibility-off"}
+                    size={24}
+                    color="#666"
+                  />
+                </TouchableOpacity>
+              </View>
               {touched.password && errors.password && (
                 <Text style={styles.error}>{errors.password}</Text>
               )}
@@ -146,41 +169,77 @@ function Salah() {
 
 
               <TouchableOpacity
-                  onPress={handleSubmit}
-                  style={styles.button}
-                  activeOpacity={0.8}
-                  disabled={isSubmitting}
-                >
-                  {isSubmitting ? (
-                    <View style={styles.buttonContent}>
-                      <Animated.View style={{ transform: [{ rotate: spin }] }}>
-                        <MaterialIcons name="home" size={24} color="white" />
-                      </Animated.View>
-                      <Text style={styles.buttonText}>
-                        Log In...
-                      </Text>
-                    </View>
-                  ) : (
-                    <View style={styles.buttonContent}>
+                onPress={handleSubmit}
+                style={styles.button}
+                activeOpacity={0.8}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <View style={styles.buttonContent}>
+                    <Animated.View style={{ transform: [{ rotate: spin }] }}>
                       <MaterialIcons name="home" size={24} color="white" />
-                      <Text style={styles.buttonText}>Log In</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
+                    </Animated.View>
+                    <Text style={styles.buttonText}>
+                      Log In...
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.buttonContent}>
+                    <MaterialIcons name="home" size={24} color="white" />
+                    <Text style={styles.buttonText}>Log In</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
 
-              <View style={{ flexDirection: 'row', marginBottom: 20 }}>
+              <View style={{ flexDirection: 'row', marginBottom: 20, justifyContent: 'center' }}>
                 <Text style={styles.signupText}>Don't have an account? </Text>
                 <TouchableOpacity onPress={() => navigation.navigate('Signup')}>
                   <Text style={styles.signupLink}>Sign Up</Text>
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.socialTitle}>Other sign-up options</Text>
+              <Text style={styles.socialTitle}>Other sign-in options</Text>
+              <View style={styles.roleSection}>
+                <Text style={styles.roleTitle}>Choose Your Role</Text>
+                <Text style={styles.roleSubtitle}>Select your role before signing in</Text>
+                <View style={styles.roleButtons}>
+                  <TouchableOpacity
+                    style={[styles.roleButton, selectedRole === 'designer' && styles.selectedRole]}
+                    onPress={() => setSelectedRole('designer')}
+                  >
+                    <MaterialIcons name="brush" size={24} color={selectedRole === 'designer' ? 'white' : '#dfb58e'} />
+                    <Text style={[styles.roleButtonText, selectedRole === 'designer' && styles.selectedRoleText]}>Designer</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.roleButton, selectedRole === 'client' && styles.selectedRole]}
+                    onPress={() => setSelectedRole('client')}
+                  >
+                    <MaterialIcons name="person" size={24} color={selectedRole === 'client' ? 'white' : '#dfb58e'} />
+                    <Text style={[styles.roleButtonText, selectedRole === 'client' && styles.selectedRoleText]}>Client</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
               <View style={styles.socialButtons}>
-                <TouchableOpacity style={styles.socialButton}>
+                <TouchableOpacity
+                  style={styles.socialButton}
+                  onPress={() => {
+                    if (!selectedRole) {
+                      Alert.alert('Error', 'Please select a role before signing in with Google');
+                      return;
+                    }
+                    setIsSubmitting(true);
+                    signInWithGoogle(navigation, selectedRole)
+                      .catch(error => {
+                        Alert.alert('Error', error.message || 'Failed to sign in with Google');
+                      })
+                      .finally(() => setIsSubmitting(false));
+                  }}
+                  disabled={isSubmitting}
+                >
                   <AntDesign name="google" size={24} color="red" />
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.socialButton}>
+                <TouchableOpacity style={styles.socialButton} disabled>
                   <FontAwesome name="facebook" size={24} color="#1877F2" />
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.socialButton}>
@@ -219,7 +278,7 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 5,
   },
-  
+
   // Add matching subtitle styling
   title: {
     color: "white",
@@ -231,15 +290,58 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
-  
+
   subtitle: {
     color: "rgba(255, 255, 255, 0.8)",
     textAlign: "center",
     marginBottom: 25,
     fontSize: 16,
   },
-  
+
   // Update social buttons to match role buttons from SignupPage
+  roleSection: {
+    width: '100%',
+    marginBottom: 20,
+  },
+  roleTitle: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  roleSubtitle: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 14,
+    marginBottom: 16,
+  },
+  roleButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  roleButton: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  selectedRole: {
+    backgroundColor: '#A67B5B',
+    borderColor: '#A67B5B',
+  },
+  roleButtonText: {
+    color: '#dfb58e',
+    marginTop: 8,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  selectedRoleText: {
+    color: 'white',
+  },
   socialButton: {
     paddingVertical: 12,
     paddingHorizontal: 25,
@@ -250,7 +352,7 @@ const styles = StyleSheet.create({
     minWidth: 120,
     justifyContent: 'center',
   },
-  
+
   // Add roleContent style for icon alignment
   roleContent: {
     flexDirection: "row",
@@ -271,7 +373,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     minHeight: 20,
   },
-  
+
   // Update input field styling to match SignupPage
   input: {
     backgroundColor: "rgba(255, 255, 255, 0.95)",
@@ -285,7 +387,7 @@ const styles = StyleSheet.create({
     shadowRadius: 1.41,
     elevation: 2,
   },
-  
+
   // Update button styling for consistency
   button: {
     backgroundColor: "#A67B5B",
@@ -300,7 +402,7 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 5,
   },
-  
+
   // Add roleContent style matching SignupPage
   roleContent: {
     flexDirection: "row",
@@ -360,6 +462,49 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 20,
   },
+  roleSection: {
+    width: '100%',
+    marginBottom: 20,
+  },
+  roleTitle: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  roleSubtitle: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 14,
+    marginBottom: 16,
+  },
+  roleButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  roleButton: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  selectedRole: {
+    backgroundColor: '#A67B5B',
+    borderColor: '#A67B5B',
+  },
+  roleButtonText: {
+    color: '#dfb58e',
+    marginTop: 8,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  selectedRoleText: {
+    color: 'white',
+  },
   socialButton: {
     width: 55,
     height: 55,
@@ -373,6 +518,20 @@ const styles = StyleSheet.create({
     shadowRadius: 2.5,
     elevation: 3,
   },
+  passwordContainer: {
+    position: 'relative',
+    width: '100%',
+  },
+  passwordInput: {
+    paddingRight: 50,
+  },
+  eyeIcon: {
+    position: 'absolute',
+    right: 15,
+    top: '40%',
+    transform: [{ translateY: -12 }],
+  },
 });
 
 export default Salah;
+

@@ -39,6 +39,8 @@ const validationSchema = Yup.object().shape({
 function SignUpScreen() {
   const [role, setRole] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const navigation = useNavigation();
   const spinValue = useRef(new Animated.Value(0)).current;
 
@@ -150,26 +152,50 @@ function SignUpScreen() {
                   <Text style={styles.error}>{errors.email}</Text>
                 )}
 
-                <TextInput
-                  placeholder="Password"
-                  secureTextEntry
-                  style={styles.input}
-                  onChangeText={handleChange("password")}
-                  onBlur={handleBlur("password")}
-                  value={values.password}
-                />
+                <View style={styles.passwordContainer}>
+                  <TextInput
+                    placeholder="Password"
+                    secureTextEntry={!showPassword}
+                    style={[styles.input, styles.passwordInput]}
+                    onChangeText={handleChange("password")}
+                    onBlur={handleBlur("password")}
+                    value={values.password}
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeIcon}
+                    onPress={() => setShowPassword(!showPassword)}
+                  >
+                    <MaterialIcons
+                      name={showPassword ? "visibility" : "visibility-off"}
+                      size={24}
+                      color="#666"
+                    />
+                  </TouchableOpacity>
+                </View>
                 {touched.password && errors.password && (
                   <Text style={styles.error}>{errors.password}</Text>
                 )}
 
-                <TextInput
-                  placeholder="Confirm your password"
-                  secureTextEntry
-                  style={styles.input}
-                  onChangeText={handleChange("confirmPassword")}
-                  onBlur={handleBlur("confirmPassword")}
-                  value={values.confirmPassword}
-                />
+                <View style={styles.passwordContainer}>
+                  <TextInput
+                    placeholder="Confirm your password"
+                    secureTextEntry={!showConfirmPassword}
+                    style={[styles.input, styles.passwordInput]}
+                    onChangeText={handleChange("confirmPassword")}
+                    onBlur={handleBlur("confirmPassword")}
+                    value={values.confirmPassword}
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeIcon}
+                    onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                  >
+                    <MaterialIcons
+                      name={showConfirmPassword ? "visibility" : "visibility-off"}
+                      size={24}
+                      color="#666"
+                    />
+                  </TouchableOpacity>
+                </View>
                 {touched.confirmPassword && errors.confirmPassword && (
                   <Text style={styles.error}>{errors.confirmPassword}</Text>
                 )}
@@ -387,7 +413,19 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     textDecorationLine: "underline",
   },
-
+  passwordContainer: {
+    position: 'relative',
+    width: '100%',
+  },
+  passwordInput: {
+    paddingRight: 50,
+  },
+  eyeIcon: {
+    position: 'absolute',
+    right: 15,
+    top: '40%',
+    transform: [{ translateY: -12 }],
+  },
 });
 
 export default SignUpScreen;

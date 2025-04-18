@@ -1,6 +1,9 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, ImageBackground, StyleSheet } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, ImageBackground, StyleSheet, Alert } from "react-native";
 import { AntDesign } from "@expo/vector-icons";
+import { auth, db } from "../firebase/firebaseConfig";
+import { sendPasswordResetEmail } from "firebase/auth";
+import { collection, query, where, getDocs } from "firebase/firestore";
 
 function ForgotPassword({ navigation }) {
   const [email, setEmail] = useState("");
@@ -12,14 +15,57 @@ function ForgotPassword({ navigation }) {
     return emailRegex.test(email);
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     if (!validateEmail(email)) {
       setIsValid(false);
       return;
     }
     setIsValid(true);
-    setMessage("Reset link sent successfully!");
-    setTimeout(() => setMessage(""), 3000);
+    try {
+      // Query users collection to find user by email
+      const usersRef = collection(db, "users");
+      const q = query(usersRef, where("email", "==", email));
+      const querySnapshot = await getDocs(q);
+      
+      if (querySnapshot.empty) {
+        Alert.alert('Error', 'No account found with this email');
+        return;
+      }
+      
+      const userSnap = querySnapshot.docs[0];
+
+      if (!userSnap.exists()) {
+        Alert.alert('Error', 'No account found with this email');
+        return;
+      }
+
+      const userData = userSnap.data();
+      if (!userData.emailVerified) {
+        Alert.alert('Error', 'Please verify your email before resetting password');
+        setIsValid(false);
+        return;
+      }
+
+      await sendPasswordResetEmail(auth, email);
+      setMessage("Reset link sent successfully! Please check your email.");
+      setTimeout(() => {
+        setMessage("");
+        navigation.goBack();
+      }, 3000);
+    } catch (error) {
+      let errorMessage = "An error occurred while sending the password reset email";
+
+      if (error.code === 'auth/invalid-email') {
+        errorMessage = "Invalid email address format";
+      } else if (error.code === 'auth/user-not-found') {
+        errorMessage = "No account found with this email";
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = "Too many requests. Please try again later";
+      }
+
+      Alert.alert('Error', errorMessage);
+      setIsValid(false);
+    }
   };
 
   return (
@@ -32,7 +78,7 @@ function ForgotPassword({ navigation }) {
         </Text>
 
         <View style={[styles.inputContainer, !isValid && styles.errorBorder]}>
-          <AntDesign name="mail" size={20} color="#6e5a46" style={styles.icon} />
+         
           <TextInput
             placeholder="Email Address"
             keyboardType="email-address"

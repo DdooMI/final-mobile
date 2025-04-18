@@ -49,9 +49,9 @@ export default function App() {
               headerShown: false,
             }}
           />
-          
+
           <Stack.Screen name="Main" component={ButtonBar} />
-          
+
           <Stack.Screen
             name="client-request"
             component={ClientRequestPage}
@@ -96,8 +96,7 @@ export default function App() {
             name="ForgotPassword"
             component={ForgotPassword}
             options={{
-              headerShown: true,
-              header: () => <AppBar routeName="Forgot Password" />,
+              headerShown: false,
             }}
           />
           <Stack.Screen
