@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Animated,
   Alert,
+  ScrollView
 } from "react-native";
 import { Formik } from "formik";
 import * as Yup from "yup";
@@ -32,20 +33,15 @@ const validationSchema = Yup.object().shape({
 
 function Salah() {
   const navigation = useNavigation();
-  const route = useRoute();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const role = route.params?.role;
   const spinValue = useRef(new Animated.Value(0)).current; // Animation value for rotation
 
   const [selectedRole, setSelectedRole] = useState(null);
-  const { login,signInWithGoogle } = useAuth();
+  const { login } = useAuth();
+ 
 
   const onSubmit = async (values, { setSubmitting, validateForm, setTouched, setFieldError }) => {
-    if (!selectedRole) {
-      Alert.alert('Error', 'Please select a role before signing in');
-      return;
-    }
     const errors = await validateForm();
     if (Object.keys(errors).length > 0) {
       setTouched({
@@ -69,7 +65,7 @@ function Salah() {
 
     try {
       await login(values, navigation);
-
+      setSubmitting(false);
     } catch (error) {
       if (error.code === 'auth/invalid-email' || error.code === 'auth/user-not-found') {
         Alert.alert('Error', 'Incorrect email or password');
@@ -101,6 +97,7 @@ function Salah() {
       style={styles.background}
       resizeMode="cover"
     >
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
       <View style={styles.container}>
         <Text style={styles.title}>Sign In</Text>
 
@@ -228,18 +225,13 @@ function Salah() {
                       Alert.alert('Error', 'Please select a role before signing in with Google');
                       return;
                     }
-                    setIsSubmitting(true);
-                    signInWithGoogle(navigation, selectedRole)
-                      .catch(error => {
-                        Alert.alert('Error', error.message || 'Failed to sign in with Google');
-                      })
-                      .finally(() => setIsSubmitting(false));
                   }}
+                  
                   disabled={isSubmitting}
                 >
                   <AntDesign name="google" size={24} color="red" />
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.socialButton} disabled>
+                <TouchableOpacity style={styles.socialButton}>
                   <FontAwesome name="facebook" size={24} color="#1877F2" />
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.socialButton}>
@@ -250,6 +242,7 @@ function Salah() {
           )}
         </Formik>
       </View>
+      </ScrollView>
     </ImageBackground>
   );
 }
@@ -257,9 +250,12 @@ function Salah() {
 const styles = StyleSheet.create({
   background: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
     width: "100%",
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingVertical: 30,
   },
   // Update container dimensions and shadows to match SignupPage
   container: {

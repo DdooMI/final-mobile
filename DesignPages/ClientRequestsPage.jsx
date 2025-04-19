@@ -1,58 +1,80 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, TouchableOpacity, FlatList, StyleSheet, Modal } from "react-native";
+import { View, Text, TouchableOpacity, FlatList, StyleSheet, Modal, Alert } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "../firebase/firebaseConfig";
+import { useAuth } from "../firebase/auth";
+import { MaterialIcons } from "@expo/vector-icons";
 
 function ClientRequestsPage() {
   const navigation = useNavigation();
+  const { user } = useAuth();
   const [requests, setRequests] = useState([]);
   const [proposals, setProposals] = useState({});
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [acceptedProposal, setAcceptedProposal] = useState(null);
   const [status, setStatus] = useState("pending");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const fetchRequests = async () => {
+    try {
+      setLoading(true);
+      const q = query(
+        collection(db, "designRequests"),
+        where("userId", "==", user.uid)
+      );
+      const querySnapshot = await getDocs(q);
+      const requestsData = [];
+
+      querySnapshot.forEach((doc) => {
+        requestsData.push({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt
+            ? formatDistanceToNow(doc.data().createdAt.toDate(), { addSuffix: true, locale: ar })
+            : "Unknown date",
+        });
+      });
+
+      setRequests(requestsData);
+
+      // Get proposals for each request
+      const proposalsData = {};
+      for (const request of requestsData) {
+        const proposalsQuery = query(
+          collection(db, "designProposals"),
+          where("requestId", "==", request.id)
+        );
+        const proposalsSnapshot = await getDocs(proposalsQuery);
+
+        const requestProposals = [];
+        proposalsSnapshot.forEach((doc) => {
+          requestProposals.push({
+            id: doc.id,
+            ...doc.data(),
+            createdAt: doc.data().createdAt
+              ? formatDistanceToNow(doc.data().createdAt.toDate(), { addSuffix: true, locale: ar })
+              : "Unknown date",
+          });
+        });
+
+        proposalsData[request.id] = requestProposals;
+      }
+
+      setProposals(proposalsData);
+    } catch (err) {
+      setError(err.message);
+      Alert.alert("Error", err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const dummyRequests = [
-      {
-        id: "1",
-        title: "تصميم غرفه نوم",
-        description: "أحتاج إلى تصميم غرفه نوم.",
-        budget: 100,
-        roomType: "bed room",
-        status: "pending",
-        createdAt: formatDistanceToNow(new Date(), { addSuffix: true, locale: ar }),
-        duration: "3 أيام",
-      },
-      {
-        id: "2",
-        title: "تصميم ريسبيشن",
-        description: "مطلوب تصميم ريسيبشن.",
-        budget: 200,
-        roomType: "hall",
-        status: "completed",
-        createdAt: formatDistanceToNow(new Date(), { addSuffix: true, locale: ar }),
-        duration: "5 أيام",
-      },
-    ];
-
-    const dummyProposals = {
-      "1": [
-        {
-          id: "p1",
-          designerEmail: "designer1@example.com",
-          description: "أنا مصمم محترف ويمكنني تنفيذ طلبك خلال يومين.",
-          price: 90,
-          estimatedTime: 2,
-          status: "pending",
-          createdAt: formatDistanceToNow(new Date(), { addSuffix: true, locale: ar }),
-        },
-      ],
-      "2": [],
-    };
-
-    setRequests(dummyRequests);
-    setProposals(dummyProposals);
+    fetchRequests();
   }, []);
 
   const handleAcceptProposal = (proposalId) => {
@@ -67,8 +89,11 @@ function ClientRequestsPage() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate("client-request")}>
-          <Text style={styles.buttonText}>New Request</Text>
+        <TouchableOpacity 
+          style={styles.fab} 
+          onPress={() => navigation.navigate("client-request")}
+        >
+          <MaterialIcons name="add" size={24} color="white" />
         </TouchableOpacity>
       </View>
 
@@ -188,13 +213,19 @@ function ClientRequestsPage() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f8f8f8", padding: 16 },
   pageTitle: { fontSize: 20, fontWeight: "bold", marginBottom: 16, textAlign: "center" },
-  header: { flexDirection: "row", justifyContent: "center", marginTop: 16 },
-  button: {
-    backgroundColor: "#C19A6B",
-    padding: 10,
-    borderRadius: 8,
+  header: { flexDirection: "row", justifyContent: "flex-end", marginTop: 16 },
+  fab: {
+    backgroundColor: "#A67B5B",
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: "center",
-    marginTop: 10,
+    justifyContent: "center",
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
   buttonText: { color: "#fff", fontWeight: "bold", fontSize: 12 },
   messageText: { color: "#C19A6B", fontWeight: "bold", fontSize: 12 },

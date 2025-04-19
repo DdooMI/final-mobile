@@ -85,7 +85,7 @@ function SignUpScreen() {
         [
           {
             text: "OK",
-            onPress: () => navigation.navigate("Login", { role }),
+            onPress: () => navigation.navigate("Login"),
           },
         ],
         { cancelable: false }
@@ -101,6 +101,7 @@ function SignUpScreen() {
     <ImageBackground
       source={require("../assets/ff.jpg")}
       style={styles.background}
+       resizeMode="cover"
     >
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.container}>
@@ -205,9 +206,9 @@ function SignUpScreen() {
                   <TouchableOpacity
                     style={[
                       styles.roleButton,
-                      role === "Designer" && styles.selectedRole,
+                      role === "designer" && styles.selectedRole,
                     ]}
-                    onPress={() => setRole("Designer")}
+                    onPress={() => setRole("designer")}
                   >
                     <View style={styles.roleContent}>
                       <MaterialIcons name="brush" size={20} color="white" />
@@ -217,9 +218,9 @@ function SignUpScreen() {
                   <TouchableOpacity
                     style={[
                       styles.roleButton,
-                      role === "Client" && styles.selectedRole,
+                      role === "client" && styles.selectedRole,
                     ]}
-                    onPress={() => setRole("Client")}
+                    onPress={() => setRole("client")}
                   >
                     <View style={styles.roleContent}>
                       <MaterialIcons name="person" size={20} color="white" />

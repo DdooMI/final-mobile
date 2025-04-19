@@ -1,6 +1,16 @@
-import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, ImageBackground, StyleSheet, Alert } from "react-native";
-import { AntDesign } from "@expo/vector-icons";
+import React, { useState, useRef } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ImageBackground,
+  StyleSheet,
+  Alert,
+  ScrollView,
+  Animated
+} from "react-native";
+import { AntDesign, MaterialIcons } from "@expo/vector-icons";
 import { auth, db } from "../firebase/firebaseConfig";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { collection, query, where, getDocs } from "firebase/firestore";
@@ -9,6 +19,8 @@ function ForgotPassword({ navigation }) {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [isValid, setIsValid] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const spinValue = useRef(new Animated.Value(0)).current;
 
   const validateEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -21,6 +33,17 @@ function ForgotPassword({ navigation }) {
       return;
     }
     setIsValid(true);
+    setIsSubmitting(true);
+    
+    // Start spinning animation
+    spinValue.setValue(0);
+    Animated.timing(spinValue, {
+      toValue: 1,
+      duration: 1000,
+      useNativeDriver: true,
+    }).start(() => {
+      spinValue.setValue(0);
+    });
     try {
       // Query users collection to find user by email
       const usersRef = collection(db, "users");
@@ -29,6 +52,7 @@ function ForgotPassword({ navigation }) {
       
       if (querySnapshot.empty) {
         Alert.alert('Error', 'No account found with this email');
+        setIsSubmitting(false);
         return;
       }
       
@@ -36,6 +60,7 @@ function ForgotPassword({ navigation }) {
 
       if (!userSnap.exists()) {
         Alert.alert('Error', 'No account found with this email');
+        setIsSubmitting(false);
         return;
       }
 
@@ -43,6 +68,7 @@ function ForgotPassword({ navigation }) {
       if (!userData.emailVerified) {
         Alert.alert('Error', 'Please verify your email before resetting password');
         setIsValid(false);
+        setIsSubmitting(false);
         return;
       }
 
@@ -65,36 +91,58 @@ function ForgotPassword({ navigation }) {
 
       Alert.alert('Error', errorMessage);
       setIsValid(false);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
+  const spin = spinValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
+
   return (
     <ImageBackground source={require("../assets/ff.jpg")} style={styles.background} resizeMode="cover">
-      <View style={styles.container}>
-        {message ? <Text style={styles.successMessage}>{message}</Text> : null}
-        <Text style={styles.title}>Reset Password</Text>
-        <Text style={styles.subtitle}>
-          Enter your email address and we'll send you a link to reset your password.
-        </Text>
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <View style={styles.container}>
+          <Text style={styles.title}>Reset Password</Text>
+          <Text style={styles.subtitle}>
+            Enter your email address and we'll send you a link to reset your password.
+          </Text>
+          {message && <Text style={styles.successMessage}>{message}</Text>}
 
-        <View style={[styles.inputContainer, !isValid && styles.errorBorder]}>
-         
-          <TextInput
-            placeholder="Email Address"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            style={styles.input}
-            value={email}
-            onChangeText={(text) => {
-              setEmail(text);
-              setIsValid(true);
-            }}
-          />
-        </View>
-        {!isValid && <Text style={styles.errorText}>Please enter a valid email</Text>}
+        <TextInput
+          placeholder="Email Address"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          style={[styles.input, !isValid && styles.errorBorder]}
+          value={email}
+          onChangeText={(text) => {
+            setEmail(text);
+            setIsValid(true);
+          }}
+        />
+        {!isValid && <Text style={styles.error}>Please enter a valid email</Text>}
 
-        <TouchableOpacity onPress={handleReset} style={styles.button} activeOpacity={0.8}>
-          <Text style={styles.buttonText}>Send Reset Link</Text>
+        <TouchableOpacity
+          onPress={handleReset}
+          style={styles.button}
+          activeOpacity={0.8}
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <View style={styles.buttonContent}>
+              <Animated.View style={{ transform: [{ rotate: spin }] }}>
+                <MaterialIcons name="home" size={24} color="white" />
+              </Animated.View>
+              <Text style={styles.buttonText}>Sending...</Text>
+            </View>
+          ) : (
+            <View style={styles.buttonContent}>
+              <MaterialIcons name="home" size={24} color="white" />
+              <Text style={styles.buttonText}>Send Reset Link</Text>
+            </View>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backToLogin}>
@@ -102,6 +150,7 @@ function ForgotPassword({ navigation }) {
           <Text style={styles.backToLoginText}> Back to Login</Text>
         </TouchableOpacity>
       </View>
+      </ScrollView>
     </ImageBackground>
   );
 }
@@ -109,80 +158,107 @@ function ForgotPassword({ navigation }) {
 const styles = StyleSheet.create({
   background: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
     width: "100%",
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingVertical: 30,
   },
   container: {
     width: "90%",
     maxWidth: 400,
-    backgroundColor: "#6e5a46",
-    padding: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: "white",
+    backgroundColor: "rgba(110, 90, 70, 0.95)",
+    padding: 25,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.2)",
     alignSelf: "center",
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   title: {
     color: "white",
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: "bold",
-    marginBottom: 10,
+    marginBottom: 8,
     textAlign: "center",
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   subtitle: {
-    color: "white",
-    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.8)",
     textAlign: "center",
-    marginBottom: 20,
-  },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "white",
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 10,
-    width: "100%",
-  },
-  icon: {
-    marginRight: 10,
+    marginBottom: 25,
+    fontSize: 16,
   },
   input: {
-    flex: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    padding: 15,
+    borderRadius: 12,
+    marginBottom: 15,
     fontSize: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.41,
+    elevation: 2,
+    width: "100%",
   },
   errorBorder: {
     borderWidth: 1,
     borderColor: "red",
   },
-  errorText: {
-    color: "red",
+  error: {
+    color: "#FF6B6B",
+    marginBottom: 12,
     fontSize: 14,
-    marginBottom: 10,
+    textAlign: "left",
+    paddingHorizontal: 5,
+    marginTop: 4,
+    minHeight: 20,
+    width: "100%",
   },
   successMessage: {
     color: "#4CAF50",
     fontSize: 16,
-    marginBottom: 10,
+    marginBottom: 20,
     fontWeight: "bold",
+    textAlign: "center",
+    width: "100%",
   },
   button: {
     backgroundColor: "#A67B5B",
-    padding: 15,
-    borderRadius: 8,
+    padding: 16,
+    borderRadius: 12,
     width: "100%",
     alignItems: "center",
     marginBottom: 15,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  buttonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
   buttonText: {
     color: "white",
     fontSize: 18,
+    fontWeight: "600",
   },
   backToLogin: {
     flexDirection: "row",
     alignItems: "center",
+    marginTop: 10,
   },
   backToLoginText: {
     color: "white",

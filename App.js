@@ -1,7 +1,7 @@
 import "react-native-gesture-handler";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { NavigationContainer } from "@react-navigation/native";
-import { View, StyleSheet } from "react-native";
+import { View, StyleSheet, SafeAreaView } from "react-native";
 import ButtonBar from "./pages/ButtonBar";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
@@ -23,7 +23,7 @@ const Stack = createNativeStackNavigator();
 export default function App() {
   return (
     <NavigationContainer>
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container}>
         <Stack.Navigator
           initialRouteName="Splash"
           screenOptions={{ headerShown: false }}
@@ -124,7 +124,7 @@ export default function App() {
             }}
           />
         </Stack.Navigator>
-      </View>
+      </SafeAreaView>
     </NavigationContainer>
   );
 }
@@ -132,5 +132,6 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    paddingTop:20
   },
 });

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  SafeAreaView,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import UserBalance from "../payment/user-balance";
@@ -73,7 +74,8 @@ export default function ProfileScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.scrollContainer}>
+    <SafeAreaView style={{flex: 1}}>
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
       {/* Top Buttons Container */}
       <View style={styles.topButtonsContainer}>
         {/* Log Out Button */}
@@ -177,7 +179,8 @@ export default function ProfileScreen() {
           {/* قائمة المشاريع ستظهر هنا إذا وجدت */}
         </View>
       )}
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 

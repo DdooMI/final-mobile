@@ -11,7 +11,8 @@ import {
   ScrollView,
   Dimensions,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  SafeAreaView
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { formatDistanceToNow } from "date-fns";
@@ -97,9 +98,7 @@ function DesignerRequestsPage() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.mainTitle}>Client Design Requests</Text>
-        
+    <SafeAreaView style={styles.container}>  
       <View style={styles.box}>
         <Text style={styles.pageTitle}>Available Requests</Text>
         <FlatList
@@ -225,7 +224,7 @@ function DesignerRequestsPage() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 

@@ -3,20 +3,12 @@ import {
   signInWithEmailAndPassword,
   signOut,
   sendEmailVerification,
-  GoogleAuthProvider,
-  signInWithCredential,
 } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { create } from "zustand";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { auth, db } from "../firebase/firebaseConfig";
-import { GoogleSignin } from '@react-native-google-signin/google-signin';
-
-// Configure Google Sign-In
-GoogleSignin.configure({
-  webClientId: '52639531068-qqvlqbqvvvvvvvvvvvvvvvvvvvvvvvvv.apps.googleusercontent.com', // Get this from your Firebase console
-  offlineAccess: true,
-});
+import { Alert } from "react-native";
 
 export const useAuth = create((set, get) => ({
   user: null,
@@ -46,87 +38,6 @@ export const useAuth = create((set, get) => ({
   },
 
   clearError: () => set({ error: null }),
-
-  signInWithGoogle: async (navigation, selectedRole) => {
-    try {
-      // Sign in with Google
-      await GoogleSignin.hasPlayServices();
-      const { idToken } = await GoogleSignin.signIn();
-      const credential = GoogleAuthProvider.credential(idToken);
-      const result = await signInWithCredential(auth, credential);
-      const user = result.user;
-      const token = await user.getIdToken();
-
-      // Check if user exists in Firestore
-      const userRef = doc(db, "users", user.uid);
-      const userSnap = await getDoc(userRef);
-
-      if (!userSnap.exists()) {
-        // Create new user document if it doesn't exist
-        await setDoc(userRef, {
-          email: user.email,
-          role: selectedRole,
-          emailVerified: true,
-        });
-
-        // Create profile document
-        const profileRef = doc(db, "users", user.uid, "profile", "profileInfo");
-        const profileData = {
-          name: user.displayName || "",
-          photoURL: user.photoURL || "",
-        };
-        await setDoc(profileRef, profileData);
-
-        await AsyncStorage.setItem("user", JSON.stringify(user));
-        await AsyncStorage.setItem("token", token);
-        await AsyncStorage.setItem("role", selectedRole);
-        await AsyncStorage.setItem("profile", JSON.stringify(profileData));
-
-        set({
-          user,
-          token,
-          role: selectedRole,
-          profile: profileData,
-          error: null,
-        });
-      } else {
-        const userData = userSnap.data();
-        const profileRef = doc(db, "users", user.uid, "profile", "profileInfo");
-        const profileSnap = await getDoc(profileRef);
-        const profileData = profileSnap.exists()
-          ? profileSnap.data()
-          : { name: user.displayName || "", photoURL: user.photoURL || "" };
-
-        await AsyncStorage.setItem("user", JSON.stringify(user));
-        await AsyncStorage.setItem("token", token);
-        await AsyncStorage.setItem("role", userData.role);
-        await AsyncStorage.setItem("profile", JSON.stringify(profileData));
-
-        set({
-          user,
-          token,
-          role: userData.role,
-          profile: profileData,
-          error: null,
-        });
-      }
-
-      navigation.navigate('Main');
-    } catch (err) {
-      let errorMessage = "An error occurred during Google sign-in";
-
-      if (err.code === "auth/invalid-credential") {
-        errorMessage = "Invalid credentials. Please try again.";
-      } else if (err.code === "auth/network-request-failed") {
-        errorMessage = "Network error. Please check your connection.";
-      } else if (err.code === "auth/user-disabled") {
-        errorMessage = "This account has been disabled.";
-      }
-
-      set({ error: errorMessage });
-    }
-  },
-
   login: async (data, navigation) => {
     try {
       const res = await signInWithEmailAndPassword(
@@ -137,8 +48,8 @@ export const useAuth = create((set, get) => ({
       const user = res.user;
       
       if (!user.emailVerified) {
-        set({ error: "Please verify your email before logging in." });
-        return;
+        Alert.alert('Error', 'Please verify your email before logging in. Check your inbox for the verification email or request a new one.');
+        return
       }
 
       const token = await user.getIdToken();
@@ -193,7 +104,7 @@ export const useAuth = create((set, get) => ({
         errorMessage = "Too many failed attempts. Please try again later";
       }
 
-      set({ error: errorMessage });
+      Alert.alert('Error', errorMessage);
       throw { code: errorCode, message: errorMessage };
     }
   },
@@ -247,7 +158,7 @@ export const useAuth = create((set, get) => ({
         errorMessage = "Password must be at least 6 characters long and contain a mix of letters, numbers, and special characters";
       }
 
-      set({ error: errorMessage });
+      Alert.alert('Error', errorMessage);
     }
   },
 
@@ -281,7 +192,7 @@ export const useAuth = create((set, get) => ({
         errorMessage = "Too many failed attempts. Please try again later";
       }
 
-      set({ error: errorMessage });
+      Alert.alert('Error', errorMessage);
     }
   },
 

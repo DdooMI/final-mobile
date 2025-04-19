@@ -10,13 +10,11 @@ import ClientDesignersPage from "../DesignPages/ClientDesignersPage";
 import DesignerRequestsPage from "../DesignPages/DesignerRequestsPage";
 import AppBar from "../Components/AppBar";
 import { useRoute } from "@react-navigation/native";
-
+import {useAuth} from "../firebase/auth"
 const Tab = createBottomTabNavigator();
 
 export default function ButtonBar() {
-  const route = useRoute();
-  const role = route.params?.role; // جلب الـ role من الـ params
-
+  const {role} = useAuth()  // جلب الـ role من الـ params
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -29,13 +27,13 @@ export default function ButtonBar() {
             iconName = "notifications";
           } else if (route.name === "Messages") {
             iconName = "message";
-          } else if (route.name === "Proposals") {
+          } else if (route.name === "My Proposals") {
             iconName = "description";
-          } else if (route.name === "Designer Requests") {
+          } else if (route.name === "Design Requests") {
             iconName = "list";
           } else if (route.name === "Designers") {
             iconName = "group";
-          } else if (route.name === "Client Requests") {
+          } else if (route.name === "My Requests") {
             iconName = "list-alt";
           }
 
@@ -54,23 +52,26 @@ export default function ButtonBar() {
         },
       })}
     >
-      <Tab.Screen name="Profile" component={ProfileScreen} />
-      <Tab.Screen name="Messages" component={MessagesPage} />
-      <Tab.Screen name="Notifications" component={NotificationsPage} />
-      {role === "Designer" ? (
+      
+      {role === "designer" ? (
         <>
           <Tab.Screen
-            name="Designer Requests"
+            name="Design Requests"
             component={DesignerRequestsPage}
           />
-          <Tab.Screen name="Proposals" component={DesignerProposalsPage} />
+          <Tab.Screen name="My Proposals" component={DesignerProposalsPage} />
         </>
       ) : (
         <>
+          <Tab.Screen name="My Requests" component={ClientRequestsPage} />
           <Tab.Screen name="Designers" component={ClientDesignersPage} />
-          <Tab.Screen name="Client Requests" component={ClientRequestsPage} />
+          
         </>
       )}
+      
+      <Tab.Screen name="Messages" component={MessagesPage} />
+      <Tab.Screen name="Notifications" component={NotificationsPage} />
+      <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
 }

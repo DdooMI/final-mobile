@@ -143,7 +143,6 @@ export default function MyProposalsScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.pageTitle}>My Proposals</Text>
 
       <TouchableOpacity style={styles.drawerButton} onPress={() => setDrawerVisible(true)}>
         <Text style={styles.drawerButtonText}>Filter Options</Text>

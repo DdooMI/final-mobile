@@ -1,16 +1,25 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert, Image } from "react-native";
+import * as ImagePicker from "expo-image-picker";
+import { Dropdown } from "react-native-element-dropdown";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "../firebase/firebaseConfig";
+import { useAuth } from "../firebase/auth";
+import { uploadImage } from "../axios/axiosConfig";
 
 const ClientRequestPage = () => {
+  const { user } = useAuth();
   const [formData, setFormData] = useState({
     title: "",
     description: "",
     budget: "",
     duration: "",
-    roomType: "living",
+    roomType: "",
     additionalDetails: "",
+    referenceImageUrl: ""
   });
-
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [error, setError] = useState(null);
@@ -19,21 +28,84 @@ const ClientRequestPage = () => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = () => {
+  const pickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 1,
+      });
+
+      if (!result.canceled) {
+        setImagePreview(result.assets[0].uri);
+        // Create FormData for image upload
+        const imageData = new FormData();
+  imageData.append("file", imagePreview);
+  imageData.append("upload_preset", "home_customization");
+  imageData.append("cloud_name", "dckwbkqjv");
+        setImageFile(imageData);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!formData.title || !formData.description || !formData.budget || !formData.duration || !formData.roomType) {
+      setError("Please fill all required fields including project title, description, budget, duration and room type");
+      return;
+    }
+
     setIsSubmitting(true);
-    setTimeout(() => {
+    try {
+      let referenceImageUrl = "";
+      if (imageFile) {
+        try {
+          referenceImageUrl = await uploadImage(imageFile);
+        } catch (error) {
+          Alert.alert('Error', 'Failed to upload image');
+          return;
+        }
+      }
+
+      await addDoc(collection(db, "designRequests"), {
+        userId: user.uid,
+        userEmail: user.email,
+        title: formData.title,
+        description: formData.description,
+        budget: formData.budget,
+        duration: formData.duration,
+        roomType: formData.roomType,
+        additionalDetails: formData.additionalDetails || "",
+        referenceImageUrl: referenceImageUrl,
+        status: "pending",
+        createdAt: serverTimestamp(),
+      });
+
       setSubmitSuccess(true);
       setFormData({
         title: "",
         description: "",
         budget: "",
         duration: "",
-        roomType: "living",
+        roomType: "",
         additionalDetails: "",
+        referenceImageUrl: ""
       });
-      setIsSubmitting(false);
+      setImageFile(null);
+      setImagePreview(null);
       setTimeout(() => setSubmitSuccess(false), 3000);
-    }, 2000);
+    } catch (err) {
+      let errorMessage = "An error occurred while submitting the request";
+      if (err.code === "permission-denied") {
+        errorMessage = "You do not have permission to perform this action";
+      } else if (err.code === "unavailable") {
+        errorMessage = "Service is currently unavailable. Please try again later";
+      }
+      setError(errorMessage);
+      Alert.alert("Error", errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -60,9 +132,34 @@ const ClientRequestPage = () => {
             style={[styles.input, styles.textArea]}
             placeholder="Describe your project"
             multiline
+            numberOfLines={4}
             value={formData.description}
             onChangeText={(value) => handleChange("description", value)}
           />
+        </View>
+
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>Room Type</Text>
+          <View style={styles.pickerContainer}>
+            <Dropdown
+              data={[
+                { label: "Select Room Type", value: "" },
+                { label: "Living Room", value: "Living Room" },
+                { label: "Bedroom", value: "Bedroom" },
+                { label: "Kitchen", value: "Kitchen" },
+                { label: "Bathroom", value: "Bathroom" },
+                { label: "Home Office", value: "Home Office" },
+                { label: "Other", value: "Other" },
+              ]}
+              labelField="label"
+              valueField="value"
+              itemTextStyle={styles.pickerText}
+              placeholder="Select Room Type"
+              value={formData.roomType}
+              onChange={(item) => handleChange("roomType", item.value)}
+              style={styles.picker}
+            />
+          </View>
         </View>
 
         <View style={styles.formGroup}>
@@ -93,9 +190,20 @@ const ClientRequestPage = () => {
             style={[styles.input, styles.textArea]}
             placeholder="Any extra details"
             multiline
+            numberOfLines={4}
             value={formData.additionalDetails}
             onChangeText={(value) => handleChange("additionalDetails", value)}
           />
+        </View>
+
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>Reference Image</Text>
+          <TouchableOpacity style={styles.imagePicker} onPress={pickImage}>
+            <Text style={styles.imagePickerText}>Choose Image</Text>
+          </TouchableOpacity>
+          {imagePreview && (
+            <Image source={{ uri: imagePreview }} style={styles.imagePreview} />
+          )}
         </View>
 
         <TouchableOpacity style={styles.button} onPress={handleSubmit} disabled={isSubmitting}>
@@ -111,6 +219,25 @@ const styles = StyleSheet.create({
     padding: 20,
     backgroundColor: "#F8F9FA",
     flexGrow: 1,
+  },
+  imagePicker: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 5,
+    padding: 12,
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  imagePickerText: {
+    color: "#555",
+    fontSize: 14,
+  },
+  imagePreview: {
+    width: "100%",
+    height: 200,
+    borderRadius: 5,
+    marginBottom: 10,
   },
   card: {
     backgroundColor: "#fff",
@@ -182,6 +309,23 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     textAlign: "center",
   },
+  pickerContainer: {
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 5,
+    paddingInline: 10,
+    backgroundColor: "#fff",
+  },
+  picker: {
+    height: 50,
+    width: "100%",
+    
+  },
+  pickerText: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#555", 
+  }
 });
 
 export default ClientRequestPage;
