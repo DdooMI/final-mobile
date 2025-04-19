@@ -1,22 +1,12 @@
-const fetchApi = async (url, options = {}) => {
-  const response = await fetch(url, options);
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
-  }
-  return response.json();
-};
+import axios from "axios";
 
-export const uploadImage = async (imageFile) => {
-//   const imageData = new FormData();
-//   imageData.append("file", imageFile);
-//   imageData.append("upload_preset", "home_customization");
-//   imageData.append("cloud_name", "dckwbkqjv");
+export const axiosApi = axios.create({
+    baseURL: "https://api.cloudinary.com/v1_1/dckwbkqjv/image/upload"
+})
+axiosApi.interceptors.request.use((req,) => {
+    return req;
+})
 
-  const response = await fetchApi("https://api.cloudinary.com/v1_1/dckwbkqjv/image/upload", {
-    method: "POST",
-    body: imageFile
-  });
-  console.log(response);
-
-  return response.secure_url;
-};
+axiosApi.interceptors.response.use((res) => {
+    return res;
+})

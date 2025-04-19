@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, TouchableOpacity, FlatList, StyleSheet, Modal, Alert } from "react-native";
+import { View, Text, TouchableOpacity, FlatList, StyleSheet, Modal, Alert, KeyboardAvoidingView, Platform } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { formatDistanceToNow } from "date-fns";
-import { ar } from "date-fns/locale";
+import { enUS } from "date-fns/locale";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "../firebase/firebaseConfig";
 import { useAuth } from "../firebase/auth";
@@ -22,60 +22,80 @@ function ClientRequestsPage() {
   const fetchRequests = async () => {
     try {
       setLoading(true);
-      const q = query(
+      setError(null);
+
+      // Fetch requests and proposals in parallel
+      const requestsQuery = query(
         collection(db, "designRequests"),
         where("userId", "==", user.uid)
       );
-      const querySnapshot = await getDocs(q);
-      const requestsData = [];
 
-      querySnapshot.forEach((doc) => {
-        requestsData.push({
-          id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt
-            ? formatDistanceToNow(doc.data().createdAt.toDate(), { addSuffix: true, locale: ar })
-            : "Unknown date",
-        });
-      });
+      const [requestsSnapshot] = await Promise.all([
+        getDocs(requestsQuery)
+      ]);
+
+      const requestsData = requestsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt
+          ? formatDistanceToNow(doc.data().createdAt.toDate(), { 
+              addSuffix: true, 
+              locale: enUS, 
+              includeSeconds: true 
+            })
+          : "Unknown date",
+        timestamp: doc.data().createdAt ? doc.data().createdAt.toDate().getTime() : 0
+      }));
+
+      // Sort by timestamp for better performance
+      requestsData.sort((a, b) => b.timestamp - a.timestamp);
 
       setRequests(requestsData);
 
-      // Get proposals for each request
-      const proposalsData = {};
-      for (const request of requestsData) {
-        const proposalsQuery = query(
+      // Fetch all proposals in parallel
+      const proposalsPromises = requestsData.map(request =>
+        getDocs(query(
           collection(db, "designProposals"),
           where("requestId", "==", request.id)
-        );
-        const proposalsSnapshot = await getDocs(proposalsQuery);
+        ))
+      );
 
-        const requestProposals = [];
-        proposalsSnapshot.forEach((doc) => {
-          requestProposals.push({
-            id: doc.id,
-            ...doc.data(),
-            createdAt: doc.data().createdAt
-              ? formatDistanceToNow(doc.data().createdAt.toDate(), { addSuffix: true, locale: ar })
-              : "Unknown date",
-          });
-        });
-
-        proposalsData[request.id] = requestProposals;
-      }
+      const proposalsSnapshots = await Promise.all(proposalsPromises);
+      
+      const proposalsData = {};
+      proposalsSnapshots.forEach((snapshot, index) => {
+        const requestId = requestsData[index].id;
+        proposalsData[requestId] = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt
+            ? formatDistanceToNow(doc.data().createdAt.toDate(), {
+                addSuffix: true,
+                locale: enUS,
+                includeSeconds: true
+              })
+            : "Unknown date"
+        }));
+      });
 
       setProposals(proposalsData);
     } catch (err) {
       setError(err.message);
-      Alert.alert("Error", err.message);
+      Alert.alert("Error", "Failed to fetch requests: " + err.message);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      fetchRequests();
+    });
+
     fetchRequests();
-  }, []);
+
+    return () => unsubscribe();
+  }, [navigation]);
 
   const handleAcceptProposal = (proposalId) => {
     setAcceptedProposal(proposalId);
@@ -89,218 +109,213 @@ function ClientRequestsPage() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.fab} 
+        <TouchableOpacity
+          style={styles.fab}
           onPress={() => navigation.navigate("client-request")}
         >
           <MaterialIcons name="add" size={24} color="white" />
         </TouchableOpacity>
       </View>
 
-      <View style={styles.box}>
-        <Text style={styles.pageTitle}>Your Requests</Text>
-        <FlatList
-          data={requests}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={[styles.requestItem, selectedRequest?.id === item.id && styles.selectedItem]}
-              onPress={() => setSelectedRequest(item)}
-            >
-              <View style={styles.requestHeader}>
-                <Text style={styles.requestTitle}>{item.title}</Text>
-                <Text style={styles.status}>{item.status}</Text>
-              </View>
-              <Text style={styles.description}>{item.description}</Text>
-              <View style={styles.detailsRow}>
-                <Text style={styles.detailText}>budget: ${item.budget}</Text>
-                <Text style={styles.detailText}>room: {item.roomType}</Text>
-              </View>
-              <View style={styles.detailsRow}>
-                <Text style={styles.detailText}>Posted: {item.createdAt}</Text>
-                <Text style={styles.detailText}>
-                  {proposals[item.id]?.length || 0} عروض
-                </Text>
-              </View>
-            </TouchableOpacity>
-          )}
-        />
-      </View>
+      <FlatList
+        style={styles.box}
+        data={requests}
+        keyExtractor={(item) => item.id}
+        refreshing={loading}
+        onRefresh={fetchRequests}
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={[styles.requestItem, selectedRequest?.id === item.id && styles.selectedItem]}
+            onPress={() => navigation.navigate("request-details", { request: item, proposals: proposals[item.id] || [] })}
+          >
+            <View style={styles.requestHeader}>
+              <Text style={styles.requestTitle}>{item.title}</Text>
+              <Text style={styles.status}>{item.status}</Text>
+            </View>
+            <Text style={styles.description}>{item.description}</Text>
+            <View style={styles.detailsRow}>
+              <Text style={styles.detailText}>budget: ${item.budget}</Text>
+              <Text style={styles.detailText}>room: {item.roomType}</Text>
+            </View>
+            <View style={styles.detailsRow}>
+              <Text style={styles.detailText}>Posted: {item.createdAt}</Text>
+              <Text style={styles.detailText}>
+                {proposals[item.id]?.length || 0} Proposals
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
+      />
 
-      <Modal visible={!!selectedRequest} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.box, styles.modalContainer]}>
-            {selectedRequest && (
-              <>
-                <Text style={styles.requestTitle}>{selectedRequest.title}</Text>
-                <Text style={styles.description}>{selectedRequest.description}</Text>
-                <View style={styles.detailsRow}>
-                  <Text style={styles.detailText}>Budget: ${selectedRequest.budget}</Text>
-                  <Text style={styles.detailText}>Room: {selectedRequest.roomType}</Text>
-                </View>
-                <View style={styles.detailsRow}>
-                  <Text style={styles.detailText}>Posted: {selectedRequest.createdAt}</Text>
-                  <Text style={styles.detailText}>
-                    Status: <Text style={[styles.statusText, styles[status]]}>{status}</Text>
-                  </Text>
-                </View>
-                <View style={styles.detailsRow}>
-                  <Text style={styles.detailText}>Duration: {selectedRequest.duration}</Text>
-                </View>
-                <Text style={styles.pageTitle}>Proposals</Text>
-                <FlatList
-                  data={proposals[selectedRequest.id] || []}
-                  keyExtractor={(item) => item.id}
-                  renderItem={({ item }) => (
-                    <View style={styles.proposalItem}>
-                      <Text style={styles.detailText}>Email: {item.designerEmail}</Text>
-                      <Text style={styles.detailText}>Description: {item.description}</Text>
-                      <Text style={styles.detailText}>Price: ${item.price}</Text>
-                      <Text style={styles.detailText}>Time: {item.estimatedTime} days</Text>
-                      <Text style={styles.detailText}>Status: {item.status}</Text>
 
-                      {status === "pending" ? (
-                        <View>
-                          <View style={styles.buttonRow}>
-                            <TouchableOpacity
-                              style={styles.acceptButton}
-                              onPress={() => handleAcceptProposal(item.id)}
-                            >
-                              <Text style={styles.buttonText}>✅ Accept</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.rejectButton} onPress={handleRejectProposal}>
-                              <Text style={styles.buttonText}>❌ Reject</Text>
-                            </TouchableOpacity>
-                          </View>
-                          <TouchableOpacity
-                            style={[styles.messageButton, { marginTop: 10 }]}
-                            onPress={() => {
-                              setSelectedRequest(null);
-                              navigation.navigate("messages", { conversationId: item.id });
-                            }}
-                          >
-                            <Text style={styles.messageText}>💬 Message Designer</Text>
-                          </TouchableOpacity>
-                        </View>
-                      ) : null}
-
-                      {status === "accepted" && acceptedProposal === item.id ? (
-                        <TouchableOpacity
-                          style={[styles.messageButton, { marginTop: 10 }]}
-                          onPress={() => {
-                            setSelectedRequest(null);
-                            navigation.navigate("messages", { conversationId: item.id });
-                          }}
-                        >
-                          <Text style={styles.messageText}>💬 Message Designer</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                    </View>
-                  )}
-                />
-                <TouchableOpacity style={styles.button} onPress={() => setSelectedRequest(null)}>
-                  <Text style={styles.buttonText}>Close</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8f8f8", padding: 16 },
-  pageTitle: { fontSize: 20, fontWeight: "bold", marginBottom: 16, textAlign: "center" },
-  header: { flexDirection: "row", justifyContent: "flex-end", marginTop: 16 },
+  container: {
+    flex: 1,
+    backgroundColor: "#F8F9FA",
+    padding: 16
+  },
+  pageTitle: {
+    fontSize: 28,
+    fontWeight: "bold",
+    marginBottom: 24,
+    color: "#2D3748"
+  },
+  header: {
+    position: 'absolute',
+    right: 20,
+    bottom: 20,
+    zIndex: 999
+  },
   fab: {
-    backgroundColor: "#A67B5B",
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    backgroundColor: "#C19A6B",
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: "center",
     justifyContent: "center",
     elevation: 4,
-    shadowColor: "#000",
+    shadowColor: "#C19A6B",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.25,
     shadowRadius: 4,
   },
-  buttonText: { color: "#fff", fontWeight: "bold", fontSize: 12 },
-  messageText: { color: "#C19A6B", fontWeight: "bold", fontSize: 12 },
-  box: {
-    backgroundColor: "#fff",
-    padding: 16,
-    borderRadius: 10,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 5,
-    marginTop: 16,
-  },
+  buttonText: { color: "#fff", fontWeight: "600", fontSize: 15 },
+  messageText: { color: "#C19A6B", fontWeight: "600", fontSize: 15 },
   requestItem: {
     backgroundColor: "#fff",
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#ddd",
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 16,
+    borderWidth: 0,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  selectedItem: { borderColor: "#C19A6B", backgroundColor: "#F7F1E1" },
-  requestHeader: { flexDirection: "row", justifyContent: "space-between" },
-  requestTitle: { fontWeight: "bold", fontSize: 16 },
-  status: { fontSize: 12, color: "#C19A6B" },
-  description: { color: "#555", marginVertical: 4 },
-  detailsRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 4 },
-  detailText: { color: "#777", fontSize: 12 },
+  selectedItem: {
+    backgroundColor: "rgba(193, 154, 107, 0.05)",
+    transform: [{ scale: 1.01 }],
+    shadowColor: "#C19A6B",
+    shadowOpacity: 0.2,
+    elevation: 3
+  },
+  requestHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10
+  },
+  requestTitle: {
+    fontWeight: "bold",
+    fontSize: 18,
+    color: "#2D3748",
+    flex: 1
+  },
+  status: {
+    fontSize: 13,
+    color: "#C19A6B",
+    backgroundColor: "rgba(193, 154, 107, 0.1)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12
+  },
+  description: {
+    color: "#4A5568",
+    marginVertical: 8,
+    lineHeight: 20
+  },
+  detailsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 8,
+    alignItems: "center"
+  },
+  detailText: {
+    color: "#718096",
+    fontSize: 13,
+    fontWeight: "500"
+  },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
     justifyContent: "center",
     alignItems: "center",
+    padding: 16
   },
-  modalContainer: { width: "90%" },
+  modalContainer: {
+    width: "100%",
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 24
+  },
+  scrollViewContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    padding: 16
+  },
   proposalItem: {
-    padding: 10,
-    backgroundColor: "#f1f1f1",
-    borderRadius: 8,
-    marginVertical: 5,
+    padding: 16,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.1)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   buttonRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 10,
-    gap: 8,
+    marginTop: 16,
+    gap: 12,
   },
   acceptButton: {
     backgroundColor: "#C19A6B",
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    borderRadius: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    elevation: 2,
+    shadowColor: "#C19A6B",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
   },
   rejectButton: {
-    backgroundColor: "red",
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    borderRadius: 6,
+    backgroundColor: "#DC3545",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    elevation: 2,
+    shadowColor: "#DC3545",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
   },
   messageButton: {
     backgroundColor: "#fff",
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    borderRadius: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: "#C19A6B",
+    marginTop: 12,
   },
   statusText: {
     fontWeight: "bold",

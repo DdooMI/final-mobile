@@ -1,14 +1,17 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert, Image } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert, Image, KeyboardAvoidingView, Platform } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { Dropdown } from "react-native-element-dropdown";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase/firebaseConfig";
 import { useAuth } from "../firebase/auth";
-import { uploadImage } from "../axios/axiosConfig";
+import { axiosApi } from "../axios/axiosConfig";
+import * as FileSystem from 'expo-file-system';
+import { useNavigation } from "@react-navigation/native";
 
 const ClientRequestPage = () => {
   const { user } = useAuth();
+  const navigation = useNavigation();
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -34,14 +37,25 @@ const ClientRequestPage = () => {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         quality: 1,
       });
-
+  
       if (!result.canceled) {
-        setImagePreview(result.assets[0].uri);
-        // Create FormData for image upload
+        const imageUri = result.assets[0].uri;
+        setImagePreview(imageUri);
+  
+        // Get image info to get the file type
+        const fileInfo = await FileSystem.getInfoAsync(imageUri);
+        const fileName = imageUri.split('/').pop();
+        const fileType = fileName.split('.').pop();
+  
         const imageData = new FormData();
-  imageData.append("file", imagePreview);
-  imageData.append("upload_preset", "home_customization");
-  imageData.append("cloud_name", "dckwbkqjv");
+        imageData.append("file", {
+          uri: imageUri,
+          name: fileName,
+          type: `image/${fileType}`
+        });
+        imageData.append("upload_preset", "home_customization");
+        imageData.append("cloud_name", "dckwbkqjv");
+  
         setImageFile(imageData);
       }
     } catch (error) {
@@ -60,7 +74,7 @@ const ClientRequestPage = () => {
       let referenceImageUrl = "";
       if (imageFile) {
         try {
-          referenceImageUrl = await uploadImage(imageFile);
+          referenceImageUrl = await axiosApi.post("", imageFile);
         } catch (error) {
           Alert.alert('Error', 'Failed to upload image');
           return;
@@ -76,7 +90,7 @@ const ClientRequestPage = () => {
         duration: formData.duration,
         roomType: formData.roomType,
         additionalDetails: formData.additionalDetails || "",
-        referenceImageUrl: referenceImageUrl,
+        referenceImageUrl: referenceImageUrl.data.secure_url,
         status: "pending",
         createdAt: serverTimestamp(),
       });
@@ -93,7 +107,10 @@ const ClientRequestPage = () => {
       });
       setImageFile(null);
       setImagePreview(null);
-      setTimeout(() => setSubmitSuccess(false), 3000);
+      setTimeout(() => {
+        setSubmitSuccess(false);
+        navigation.navigate("Main");
+      }, 3000);
     } catch (err) {
       let errorMessage = "An error occurred while submitting the request";
       if (err.code === "permission-denied") {
@@ -103,14 +120,19 @@ const ClientRequestPage = () => {
       }
       setError(errorMessage);
       Alert.alert("Error", errorMessage);
+      console.error("Error submitting design request:", err);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.card}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0}
+    >
+      <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.heading}>Submit a Design Request</Text>
         <Text style={styles.subHeading}>Tell us about your dream interior design project</Text>
         {submitSuccess && <Text style={styles.success}>Your design request has been submitted successfully.</Text>}
@@ -209,122 +231,115 @@ const ClientRequestPage = () => {
         <TouchableOpacity style={styles.button} onPress={handleSubmit} disabled={isSubmitting}>
           <Text style={styles.buttonText}>{isSubmitting ? "Submitting..." : "Submit Request"}</Text>
         </TouchableOpacity>
-      </View>
+  
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    padding: 20,
+    padding: 24,
     backgroundColor: "#F8F9FA",
     flexGrow: 1,
   },
-  imagePicker: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 5,
-    padding: 12,
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  imagePickerText: {
-    color: "#555",
-    fontSize: 14,
-  },
-  imagePreview: {
-    width: "100%",
-    height: 200,
-    borderRadius: 5,
-    marginBottom: 10,
-  },
-  card: {
-    backgroundColor: "#fff",
-    padding: 20,
-    borderRadius: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 5,
-  },
   heading: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: "bold",
+    color: "#2D3748",
+    marginBottom: 8,
     textAlign: "center",
-    marginBottom: 10,
-    color: "#333",
   },
   subHeading: {
     fontSize: 16,
+    color: "#718096",
+    marginBottom: 32,
     textAlign: "center",
-    marginBottom: 20,
-    color: "#666",
   },
   formGroup: {
-    marginBottom: 15,
+    marginBottom: 24,
   },
   label: {
-    fontSize: 14,
-    fontWeight: "bold",
-    color: "#555",
-    marginBottom: 5,
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#4A5568",
+    marginBottom: 8,
   },
   input: {
     borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 5,
-    padding: 10,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    padding: 16,
     backgroundColor: "#fff",
+    fontSize: 16,
   },
   textArea: {
-    height: 80,
+    height: 120,
+    textAlignVertical: "top",
   },
   button: {
     backgroundColor: "#C19A6B",
-    padding: 15,
-    borderRadius: 30,
+    padding: 16,
+    borderRadius: 12,
     alignItems: "center",
-    marginTop: 10,
+    marginTop: 32,
   },
   buttonText: {
     color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
+    fontSize: 18,
+    fontWeight: "600",
   },
   success: {
-    backgroundColor: "#D4EDDA",
-    color: "#155724",
-    padding: 10,
-    borderRadius: 5,
-    marginBottom: 10,
+    backgroundColor: "#C6F6D5",
+    color: "#2F855A",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 24,
     textAlign: "center",
+    fontSize: 16,
   },
   error: {
-    backgroundColor: "#F8D7DA",
-    color: "#721C24",
-    padding: 10,
-    borderRadius: 5,
-    marginBottom: 10,
+    backgroundColor: "#FED7D7",
+    color: "#C53030",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 24,
     textAlign: "center",
+    fontSize: 16,
   },
   pickerContainer: {
     borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 5,
-    paddingInline: 10,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
     backgroundColor: "#fff",
   },
   picker: {
     height: 50,
     width: "100%",
-    
+    paddingHorizontal: 16,
   },
   pickerText: {
-    fontSize: 14,
-    fontWeight: "bold",
-    color: "#555", 
+    fontSize: 16,
+    color: "#4A5568",
+  },
+  imagePicker: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    padding: 16,
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  imagePickerText: {
+    color: "#4A5568",
+    fontSize: 16,
+  },
+  imagePreview: {
+    width: "100%",
+    height: 200,
+    borderRadius: 12,
+    marginBottom: 16,
   }
 });
 

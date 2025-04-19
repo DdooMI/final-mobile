@@ -16,7 +16,8 @@ import DesignerRequestsPage from "./DesignPages/DesignerRequestsPage";
 import ProjectDetails from "./pages/ProjectPage";
 import PaymentPage from "./pages/PaymentPage";
 import AppBar from "./Components/AppBar";
-
+import ClientRequestsPage from "./DesignPages/ClientRequestsPage";
+import RequestDetailsPage from "./DesignPages/RequestDetailsPage";
 
 const Stack = createNativeStackNavigator();
 
@@ -51,7 +52,14 @@ export default function App() {
           />
 
           <Stack.Screen name="Main" component={ButtonBar} />
-
+          <Stack.Screen
+            name="client-requests"
+            component={ClientRequestsPage}
+            options={{
+              headerShown: true,
+              header: () => <AppBar routeName="Client Requests" />,
+            }}
+          />
           <Stack.Screen
             name="client-request"
             component={ClientRequestPage}
@@ -121,6 +129,14 @@ export default function App() {
             options={{
               headerShown: true,
               header: () => <AppBar routeName="Payment" />,
+            }}
+          />
+          <Stack.Screen
+            name="request-details"
+            component={RequestDetailsPage}
+            options={{
+              headerShown: true,
+              header: () => <AppBar routeName="Request Details" />,
             }}
           />
         </Stack.Navigator>
