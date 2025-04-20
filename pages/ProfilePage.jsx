@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,47 +8,171 @@ import {
   StyleSheet,
   ScrollView,
   SafeAreaView,
+  ActivityIndicator,
+  Alert,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import UserBalance from "../payment/user-balance";
-import { useNavigation } from "@react-navigation/native"; // Import navigation hook
+import { useNavigation } from "@react-navigation/native";
+import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
+import { db } from "../firebase/firebaseConfig";
+import { useAuth } from "../firebase/auth";
+import { axiosApi } from "../axios/axiosConfig";
+import { MaterialIcons } from "@expo/vector-icons";
 
 export default function ProfileScreen() {
+  const { user, role, profile, updateProfile, logout } = useAuth();
   const [editMode, setEditMode] = useState(false);
-  const [name, setName] = useState("sayed");
-  const [email] = useState("latifosama300@gmail.com");
-  const [imageUri, setImageUri] = useState(null);
-  const [activeTab, setActiveTab] = useState("all");
+  const [newName, setNewName] = useState(profile?.name || "");
+  const [newBio, setNewBio] = useState(profile?.bio || "");
+  const [newSpecialization, setNewSpecialization] = useState(profile?.specialization || "");
+  const [newExperience, setNewExperience] = useState(profile?.experience || "");
+  const [imageFile, setImageFile] = useState();
+  const navigation = useNavigation();
   const [projects, setProjects] = useState([]);
-  const [showDropdown, setShowDropdown] = useState(false); // State for dropdown visibility
-  const navigation = useNavigation(); // Hook for navigation
+  const [loadingProjects, setLoadingProjects] = useState(true);
+  const [activeTab, setActiveTab] = useState("all");
+  const [designerRating, setDesignerRating] = useState({ averageRating: 0, ratingCount: 0 });
+  const [showDropdown, setShowDropdown] = useState(false);
 
-  const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 1,
-    });
+  useEffect(() => {
+    if (role === 'designer' && user?.uid) {
+      const fetchRating = async () => {
+        try {
+          const rating = await getDesignerRating(user.uid);
+          setDesignerRating(rating);
+        } catch (error) {
+          console.error('Error fetching designer rating:', error);
+          setDesignerRating({ averageRating: 0, ratingCount: 0 });
+        }
+      };
+      fetchRating();
+    }
+  }, [user?.uid, role]);
 
-    if (!result.canceled) {
-      setImageUri(result.assets[0].uri);
+  useEffect(() => {
+    const fetchProjects = async () => {
+      if (role === 'designer' && user?.uid) {
+        let statusFilter;
+        if (activeTab === "completed") {
+          statusFilter = ["completed"];
+        } else if (activeTab === "in_progress") {
+          statusFilter = ["accepted"];
+        } else {
+          statusFilter = ["completed", "accepted"];
+        }
+
+        const q = query(
+          collection(db, 'designProposals'),
+          where('designerId', '==', user.uid),
+          where('status', 'in', statusFilter)
+        );
+
+        const querySnapshot = await getDocs(q);
+        const projectsData = await Promise.all(querySnapshot.docs.map(async docu => {
+          const proposalData = docu.data();
+          const requestRef = doc(db, 'designRequests', proposalData.requestId);
+          const requestSnap = await getDoc(requestRef);
+
+          const clientProfileRef = doc(db, 'users', proposalData.clientId, 'profile', 'profileInfo');
+          const clientProfileSnap = await getDoc(clientProfileRef);
+          const clientName = clientProfileSnap.exists()
+            ? clientProfileSnap.data().name
+            : 'Client';
+
+          return {
+            id: docu.id,
+            ...proposalData,
+            referenceImageUrl: requestSnap.exists()
+              ? requestSnap.data().referenceImageUrl
+              : '/project-placeholder.jpg',
+            clientName
+          };
+        }));
+
+        setProjects(projectsData);
+        setLoadingProjects(false);
+      }
+    };
+
+    fetchProjects();
+  }, [user?.uid, role, activeTab]);
+
+  const handleFileChange = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 1,
+      });
+
+      if (!result.canceled) {
+        const imageUri = result.assets[0].uri;
+        const fileName = imageUri.split('/').pop();
+        const fileType = fileName.split('.').pop();
+
+        const imageData = new FormData();
+        imageData.append("file", {
+          uri: imageUri,
+          name: fileName,
+          type: `image/${fileType}`
+        });
+        imageData.append("upload_preset", "home_customization");
+        imageData.append("cloud_name", "dckwbkqjv");
+
+        setImageFile(imageData);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to pick image');
     }
   };
 
-  const handleSave = () => {
-    setEditMode(false);
+  const handleSave = async () => {
+    try {
+      if (!imageFile && newName === profile?.name && newBio === profile?.bio &&
+        newSpecialization === profile?.specialization && newExperience === profile?.experience) {
+        setEditMode(false);
+        return;
+      }
+
+      let uploadedImageUrl = profile?.photoURL;
+
+      if (imageFile) {
+        try {
+          const res = await axiosApi.post("", imageFile);
+          uploadedImageUrl = res.data.secure_url;
+        } catch (uploadError) {
+          console.error('Error uploading image:', uploadError);
+          Alert.alert('Error', 'Failed to upload image. Please try again.');
+          return;
+        }
+      }
+
+      await updateProfile({
+        name: newName,
+        photoURL: uploadedImageUrl,
+        bio: newBio,
+        specialization: newSpecialization,
+        experience: newExperience
+      });
+
+      setEditMode(false);
+      setImageFile(null);
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      Alert.alert('Error', 'Failed to update profile. Please try again.');
+    }
   };
 
   const handleLogout = async () => {
     try {
-      console.log("User logged out");
-      // Add your logout logic here, e.g.:
-      // await auth().signOut();
-      // navigation.reset({
-      //   index: 0,
-      //   routes: [{ name: 'Login' }],
-      // });
+      await logout();
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Login' }],
+      });
     } catch (error) {
       console.error("Logout error:", error);
+      Alert.alert('Error', 'Failed to logout. Please try again.');
     }
   };
 
@@ -74,267 +198,444 @@ export default function ProfileScreen() {
   };
 
   return (
-    <SafeAreaView style={{flex: 1}}>
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
-      {/* Top Buttons Container */}
-      <View style={styles.topButtonsContainer}>
-        {/* Log Out Button */}
-        <TouchableOpacity style={styles.button} onPress={handleLogout}>
-          <Text style={styles.buttonText}>Log Out</Text>
-        </TouchableOpacity>
+    <SafeAreaView style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={[styles.scrollContainer, { paddingBottom: 150 }]}>
+        <View style={styles.mainContent}>
 
-        {/* About Us Button with Dropdown */}
-        <View style={styles.dropdownContainer}>
+          <View style={styles.card}>
+            <View style={styles.avatarContainer}>
+              <Image
+                source={
+                  profile?.photoURL ? { uri: profile.photoURL } : require("../assets/person.gif")
+                }
+                style={styles.avatar}
+              />
+              {editMode && (
+                <TouchableOpacity style={styles.imagePickerOverlay} onPress={handleFileChange}>
+                  <MaterialIcons name="camera-alt" size={24} color="#FFFFFF" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {editMode ? (
+              <>
+                <TextInput
+                  style={styles.input}
+                  value={newName}
+                  onChangeText={setNewName}
+                  placeholder="Name"
+                />
+                <TextInput
+                  style={styles.input}
+                  value={newBio}
+                  onChangeText={setNewBio}
+                  placeholder="Bio"
+                  multiline
+                />
+                {role === 'designer' && (
+                  <>
+                    <TextInput
+                      style={styles.input}
+                      value={newSpecialization}
+                      onChangeText={setNewSpecialization}
+                      placeholder="Specialization"
+                    />
+                    <TextInput
+                      style={styles.input}
+                      value={newExperience}
+                      onChangeText={setNewExperience}
+                      placeholder="Experience"
+                    />
+                  </>
+                )}
+                <TouchableOpacity style={styles.imagePicker} onPress={handleFileChange}>
+                  <Text style={{ color: "#555" }}>Choose Image</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.name}>{profile?.name || "Unknown User"}</Text>
+                <Text style={styles.email}>{user?.email}</Text>
+                <Text style={styles.bio}>{profile?.bio || "No bio available"}</Text>
+
+                {role === 'designer' && (
+                  <>
+                    <View style={styles.ratingContainer}>
+                      <MaterialIcons name="star" size={20} color="#FFD700" />
+                      <Text style={styles.rating}>
+                        {designerRating.averageRating.toFixed(1)}
+                      </Text>
+                      <Text style={styles.ratingCount}>
+                        ({designerRating.ratingCount} reviews)
+                      </Text>
+                    </View>
+
+                    <View style={styles.detailsContainer}>
+                      <View style={styles.detailItem}>
+                        <MaterialIcons name="work" size={20} color="#666" />
+                        <Text style={styles.detailText}>
+                          {profile?.specialization || "Interior Design"}
+                        </Text>
+                      </View>
+                      <View style={styles.detailItem}>
+                        <MaterialIcons name="timer" size={20} color="#666" />
+                        <Text style={styles.detailText}>
+                          {profile?.experience || "Experience not specified"}
+                        </Text>
+                      </View>
+                    </View>
+                  </>
+                )}
+              </>
+            )}
+
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{role?.charAt(0).toUpperCase() + role?.slice(1) || "User"}</Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.button}
+              onPress={editMode ? handleSave : () => setEditMode(true)}
+            >
+              <Text style={styles.buttonText}>
+                {editMode ? "Save" : "Edit Profile"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.balanceWrapper}>
+            <UserBalance />
+          </View>
+
+          {role === 'designer' && (
+            <>
+              <View style={styles.tabsContainer}>
+                <TouchableOpacity
+                  style={[styles.tabBtn, activeTab === "all" && styles.activeTab]}
+                  onPress={() => setActiveTab("all")}
+                >
+                  <Text
+                    style={[styles.tabText, activeTab === "all" && styles.activeText]}
+                  >
+                    All Projects
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {projects.length === 0 ? (
+                <View style={styles.noProjectsContainer}>
+                  <Text style={styles.noProjectsText}>No Projects Available</Text>
+                </View>
+              ) : (
+                <View style={styles.projectsList}>
+                  {/* قائمة المشاريع ستظهر هنا إذا وجدت */}
+                </View>
+              )}
+            </>
+          )}
+
+        </View>
+        <View style={[styles.bottomButtonsContainer, { position: 'absolute', bottom: 0 }]}>
           <TouchableOpacity style={styles.button} onPress={toggleDropdown}>
-            <Text style={styles.buttonText}> More About Us</Text>
+            <Text style={styles.buttonText}>More About Us</Text>
           </TouchableOpacity>
 
           {showDropdown && (
-            <View style={styles.dropdownMenu}>
-              <TouchableOpacity
-                style={styles.dropdownItem}
-                onPress={handleAboutUs}
-              >
+            <View style={[styles.dropdownMenu, { bottom: 120 }]}>
+              <TouchableOpacity style={styles.dropdownItem} onPress={handleAboutUs}>
                 <Text style={styles.dropdownText}>About Us</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.dropdownItem}
-                onPress={handleContactUs}
-              >
+              <TouchableOpacity style={styles.dropdownItem} onPress={handleContactUs}>
                 <Text style={styles.dropdownText}>Contact Us</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.dropdownItem}
-                onPress={handleOurService}
-              >
+              <TouchableOpacity style={styles.dropdownItem} onPress={handleOurService}>
                 <Text style={styles.dropdownText}>Our Service</Text>
               </TouchableOpacity>
             </View>
           )}
+
+          <TouchableOpacity style={[styles.button, { marginTop: 10 }]} onPress={handleLogout}>
+            <Text style={styles.buttonText}>Log Out</Text>
+          </TouchableOpacity>
         </View>
-      </View>
-
-      <View style={styles.card}>
-        <Image
-          source={
-            imageUri ? { uri: imageUri } : require("../assets/person.gif")
-          }
-          style={styles.avatar}
-        />
-
-        {editMode ? (
-          <>
-            <TextInput
-              style={styles.input}
-              value={name}
-              onChangeText={setName}
-            />
-            <TouchableOpacity style={styles.imagePicker} onPress={pickImage}>
-              <Text style={{ color: "#555" }}>Choose Image</Text>
-            </TouchableOpacity>
-          </>
-        ) : (
-          <Text style={styles.name}>{name}</Text>
-        )}
-
-        <Text style={styles.email}>{email}</Text>
-
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>Designer</Text>
-        </View>
-
-        <TouchableOpacity
-          style={styles.button}
-          onPress={editMode ? handleSave : () => setEditMode(true)}
-        >
-          <Text style={styles.buttonText}>
-            {editMode ? "Save" : "Edit Profile"}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.balanceWrapper}>
-        <UserBalance />
-      </View>
-
-      <View style={styles.tabsContainer}>
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === "all" && styles.activeTab]}
-          onPress={() => setActiveTab("all")}
-        >
-          <Text
-            style={[styles.tabText, activeTab === "all" && styles.activeText]}
-          >
-            All Projects
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {projects.length === 0 ? (
-        <View style={styles.noProjectsContainer}>
-          <Text style={styles.noProjectsText}>No Projects Available</Text>
-        </View>
-      ) : (
-        <View style={styles.projectsList}>
-          {/* قائمة المشاريع ستظهر هنا إذا وجدت */}
-        </View>
-      )}
       </ScrollView>
+
+
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  mainContent: {
+    flex: 1,
+  },
   scrollContainer: {
     paddingVertical: 20,
     backgroundColor: "#F9FAFB",
   },
-  topButtonsContainer: {
-    width: "90%",
-    alignSelf: "center",
-    flexDirection: "row", // Align buttons horizontally
+  bottomButtonsContainer: {
+    flexDirection: "column",
+    justifyContent: "center",
     alignItems: "center",
-    marginBottom: 10,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 0,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 5,
+    borderTopWidth: 1,
+    borderTopColor: "#E2E8F0",
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    width: "100%"
   },
   dropdownContainer: {
     position: "relative",
-    marginLeft: 10, // Space between Log Out and About Us buttons
-  },
-  dropdownMenu: {
-    position: "absolute",
-    top: 50, // Adjust based on button height
-    left: 0,
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    shadowColor: "#000",
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    elevation: 5,
-    width: 150,
-    zIndex: 1000, // Ensure dropdown appears above other elements
-  },
-  dropdownItem: {
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-  },
-  dropdownText: {
-    fontSize: 16,
-    color: "#333",
+    width: "100%",
   },
   card: {
-    backgroundColor: "#fff",
-    width: "90%",
-    padding: 20,
-    borderRadius: 16,
-    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding:24,
+    marginHorizontal: 16,
+    
     shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
     elevation: 5,
-    alignSelf: "center",
   },
   avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    marginBottom: 10,
-    backgroundColor: "#eee",
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    alignSelf: "center",
+    
+    borderWidth: 4,
+    borderColor: "#C19A6B",
+    backgroundColor: "#F5F5F5",
   },
   name: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#111",
+    fontSize: 28,
+    fontWeight: "700",
+    color: "#1A1A1A",
+    textAlign: "center",
+    letterSpacing: 0.5,
   },
   email: {
     fontSize: 16,
-    color: "#666",
-    marginTop: 4,
+    color: "#666666",
+    textAlign: "center",
+    letterSpacing: 0.3,
+  },
+  bio: {
+    fontSize: 16,
+    color: "#4A5568",
+    textAlign: "center",                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
+    lineHeight: 24,
+    paddingHorizontal: 16,
+  },
+  ratingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+    backgroundColor: "#FFF9F0",
+    padding: 12,
+    borderRadius: 16,
+  },
+  rating: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1A1A1A",
+    marginLeft: 8,
+  },
+  ratingCount: {
+    fontSize: 14,
+    color: "#666666",
+    marginLeft: 4,
+  },
+  detailsContainer: {
+    marginBottom: 24,
+    backgroundColor: "#F8F9FA",
+    borderRadius: 16,
+    padding: 16,
+  },
+  detailItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    paddingHorizontal: 8,
+    backgroundColor: "#FFFFFF",
+    padding: 12,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  detailText: {
+    fontSize: 16,
+    color: "#4A5568",
+    marginLeft: 12,
+    flex: 1,
+  },
+  dropdownMenu: {
+    position: "absolute",
+    bottom: 60,
+    right: 0,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+    width: 180,
+    zIndex: 1000,
+    overflow: "hidden",
+  },
+  dropdownItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F0F0",
+  },
+  dropdownText: {
+    fontSize: 16,
+    color: "#333333",
+    letterSpacing: 0.3,
   },
   badge: {
-    marginTop: 8,
-    marginBottom: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    backgroundColor: "#A67B5B20",
+    marginVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: "#C19A6B20",
     borderRadius: 20,
+    alignSelf: "center",
   },
   badgeText: {
-    color: "#A67B5B",
+    color: "#C19A6B",
     fontWeight: "600",
+    fontSize: 14,
+    letterSpacing: 0.5,
   },
   button: {
-    backgroundColor: "#A67B5B",
+    backgroundColor: "#C19A6B",
     paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    width: "100%",
+    alignItems: "center",
+    marginTop: 8,
   },
   buttonText: {
-    color: "#fff",
-    fontWeight: "bold",
+    color: "#FFFFFF",
+    fontWeight: "600",
+    fontSize: 16,
+    letterSpacing: 0.5,
   },
   input: {
-    borderBottomWidth: 1,
-    borderBottomColor: "#ccc",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
     width: "100%",
-    fontSize: 18,
-    marginVertical: 10,
-    padding: 6,
+    fontSize: 16,
+    marginVertical: 8,
+    padding: 12,
+    backgroundColor: "#FFFFFF",
   },
   imagePicker: {
-    marginTop: 8,
-    padding: 8,
+    marginTop: 16,
+    padding: 12,
     borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
-    backgroundColor: "#f2f2f2",
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    backgroundColor: "#F8F9FA",
+    alignItems: "center",
+    width: "100%",
   },
   balanceWrapper: {
     width: "90%",
-    marginTop: 20,
+    marginTop: 24,
     alignSelf: "center",
   },
   tabsContainer: {
     flexDirection: "row",
     width: "90%",
-    marginTop: 20,
+    marginTop: 24,
     borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
+    borderBottomColor: "#E2E8F0",
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
     alignSelf: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
   },
   tabBtn: {
-    marginRight: 16,
-    paddingBottom: 6,
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: "center",
+    borderRadius: 8,
   },
   tabText: {
     fontSize: 14,
-    color: "#6b7280",
+    color: "#666666",
     fontWeight: "500",
+    letterSpacing: 0.3,
   },
   activeTab: {
-    borderBottomWidth: 2,
-    borderColor: "#A67B5B",
+    backgroundColor: "#C19A6B20",
   },
   activeText: {
-    color: "#A67B5B",
+    color: "#C19A6B",
+    fontWeight: "600",
   },
   noProjectsContainer: {
-    marginTop: 20,
-    padding: 20,
-    backgroundColor: "#f9f9f9",
-    borderRadius: 8,
+    marginTop: 24,
+    padding: 24,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
     alignItems: "center",
     alignSelf: "center",
+    width: "90%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
   noProjectsText: {
-    color: "#6b7280",
+    color: "#666666",
     fontSize: 16,
     fontWeight: "500",
+    letterSpacing: 0.3,
   },
   projectsList: {
-    marginTop: 20,
+    marginTop: 24,
+    paddingHorizontal: 16,
   },
+  avatarContainer: {
+    position: 'relative',
+    alignSelf: 'center',
+    marginBottom: 24,
+  },
+
+  imagePickerOverlay: {
+    position: 'absolute',
+    bottom: 20,
+    right: 0,
+    backgroundColor: '#C19A6B',
+    borderRadius: 20,
+    padding: 8,
+    elevation: 5,
+  }
+
 });
+

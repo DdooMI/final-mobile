@@ -1,15 +1,23 @@
-import React from "react"
+import React, { useEffect } from "react"
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native"
 import { Wallet } from "lucide-react-native"
 import { useNavigation } from "@react-navigation/native"
+import { useAuth } from "../firebase/auth"
+import { useBalance } from "../zustand/balance"
 
 const UserBalance = () => {
   const navigation = useNavigation()
-  const balance = 250.75
-  const isLoading = false
+  const { user } = useAuth()
+  const { balance, isLoading, fetchBalance } = useBalance()
+
+  useEffect(() => {
+    if (user?.uid) {
+      fetchBalance(user.uid)
+    }
+  }, [user, fetchBalance])
 
   const handleManageFunds = () => {
-    navigation.navigate("payment") // تأكد من وجود شاشة Payment في الـ Navigator
+    navigation.navigate("payment")
   }
 
   return (
@@ -71,7 +79,7 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   manageFundsBtn: {
-    backgroundColor: "#A67B5B",
+    backgroundColor: "#C19A6B",
     padding: 14,
     borderRadius: 8,
     alignItems: "center",

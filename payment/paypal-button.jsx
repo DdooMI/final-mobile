@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
-import { WebView } from 'react-native-webview';
+                                                                                                                                                                                                                                                                                                    import { PayPal } from 'react-native-paypal';
 
 const PayPalButton = ({
   amount,
@@ -22,20 +22,69 @@ const PayPalButton = ({
     }
   }, [amount, testMode]);
 
-  // PayPal script options
-  const paypalOptions = {
-    'client-id': 'test', // Replace with your actual PayPal client ID
-    currency: 'USD',
-    intent: 'capture',
+  // Initialize PayPal
+  useEffect(() => {
+    PayPal.initialize({
+      clientId: process.env.PAYPAL_CLIENT_ID || 'test',
+      environment: testMode ? PayPal.SANDBOX : PayPal.PRODUCTION,       
+      currency: 'USD',
+      intent: 'capture'
+    });
+  }, [testMode]);
+       
+  const handlePayment = async () => {
+    try {
+      setIsLoading(true);
+      const numAmount = testMode && (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0)
+        ? 1.00 // Use default amount for testing
+        : parseFloat(amount || 0);
+
+      const description = operationType === 'withdraw'
+        ? 'Withdrawal from account balance'
+        : operationType === 'balance'
+          ? 'Payment using PayPal balance'
+          : 'Deposit to account balance';
+
+      const payment = await PayPal.pay({
+        amount: numAmount.toFixed(2),
+        currency: 'USD',
+        description,
+        userAction: 'PAY_NOW',
+        metadata: {
+          operationType,
+          brandName: 'Interior Design Platform'
+        }
+      });
+
+      if (payment.status === 'completed' || testMode) {
+        const successData = testMode ? {
+          id: `test-${Date.now()}`,
+          status: 'COMPLETED',
+          amount: {
+            value: numAmount.toFixed(2),
+            currency_code: 'USD'
+          },
+          create_time: new Date().toISOString()
+        } : payment;
+
+        onSuccess(successData);
+      } else {
+        onError('Payment not completed');
+      }
+    } catch (error) {
+      console.error('PayPal error:', error);
+      onError(error.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <View style={styles.paypalContainer}>
-      {/* Header with amount */}
       <View style={styles.paypalHeader}>
         <Text style={styles.paypalTitle}>
-          {operationType === 'deposit' ? 'Deposit Funds' : 
-           operationType === 'withdraw' ? 'Withdraw Funds' : 
+          {operationType === 'deposit' ? 'Deposit Funds' :
+           operationType === 'withdraw' ? 'Withdraw Funds' :
            'Pay with PayPal Balance'}
         </Text>
         <View style={styles.paypalAmount}>
@@ -45,35 +94,28 @@ const PayPalButton = ({
         </View>
       </View>
       
-      {/* PayPal Button */}
       <View style={styles.paypalButtonWrapper}>
         {errorMessage ? (
           <Text style={styles.errorMessage}>{errorMessage}</Text>
         ) : (
-          <WebView
-            source={{
-              uri: `https://www.paypal.com/sdk/js?client-id=${paypalOptions['client-id']}&currency=${paypalOptions.currency}`,
-            }}
-            style={styles.paypalButtonElement}
-          />
+          <TouchableOpacity
+            style={[styles.paypalButton, isLoading && styles.paypalButtonDisabled]}
+            onPress={handlePayment}
+            disabled={!testMode && (!!errorMessage || isLoading || parseFloat(amount) <= 0)}
+          >
+            {isLoading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.paypalButtonText}>
+                Pay with PayPal
+              </Text>
+            )}
+          </TouchableOpacity>
         )}
       </View>
-      
-      {/* Loading Overlay */}
-      {isLoading && (
-        <View style={styles.processingOverlay}>
-          <View style={styles.processingMessage}>
-            {operationType === 'balance' ? 'Processing your payment...' : 
-             `Processing your ${operationType}...`}
-          </View>
-        </View>
-      )}
-      
-      {/* Footer with security badge */}
-      <View style={styles.paypalFooter}>
-        <View style={styles.securityBadge}>
-          <Text style={styles.securityText}>Secure transaction powered by PayPal</Text>
-        </View>
+
+      <View style={styles.securityBadge}>
+        <Text style={styles.securityText}>Secure transaction powered by PayPal</Text>
       </View>
     </View>
   );
@@ -81,25 +123,14 @@ const PayPalButton = ({
 
 const styles = StyleSheet.create({
   paypalContainer: {
-    maxWidth: 500,
-    marginLeft: 'auto',
-    marginRight: 'auto',
     backgroundColor: '#fff',
     borderRadius: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
     padding: 20,
-    fontFamily: 'Arial',
-    position: 'relative',
+    width: '100%',
   },
   paypalHeader: {
-    textAlign: 'center',
+    alignItems: 'center',
     marginBottom: 20,
-    paddingBottom: 15,
-    borderBottomWidth: 1,
-    borderColor: '#f0f0f0',
   },
   paypalTitle: {
     fontSize: 18,
@@ -108,81 +139,55 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   paypalAmount: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#0070ba',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
   },
   currency: {
     fontSize: 24,
+    color: '#0070ba',
     marginRight: 5,
   },
   amount: {
     fontSize: 32,
+    fontWeight: '700',
+    color: '#0070ba',
   },
   currencyName: {
     fontSize: 16,
-    marginLeft: 5,
     color: '#666',
-    fontWeight: 'normal',
+    marginLeft: 5,
   },
   paypalButtonWrapper: {
-    position: 'relative',
     marginVertical: 20,
-    minHeight: 55,
-    zIndex: 1,
   },
-  paypalButtonElement: {
-    width: '100%',
-    minHeight: 55,
-    position: 'relative',
-    zIndex: 2,
-  },
-  processingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: '100%',
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1000,
+  paypalButton: {
+    backgroundColor: '#0070ba',
     borderRadius: 4,
+    padding: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
   },
-  processingMessage: {
-    backgroundColor: '#fff',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    borderRadius: 5,
-    boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)',
+  paypalButtonDisabled: {
+    opacity: 0.7,
+  },
+  paypalButtonText: {
+    color: '#fff',
+    fontSize: 16,
     fontWeight: '600',
-    color: '#2c2e2f',
   },
-  paypalFooter: {
-    marginTop: 20,
-    paddingTop: 15,
-    borderTopWidth: 1,
-    borderColor: '#f0f0f0',
+  errorMessage: {
+    color: '#e53e3e',
+    textAlign: 'center',
+    marginBottom: 10,
   },
   securityBadge: {
-    display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 12,
-    color: '#666',
+    marginTop: 10,
   },
   securityText: {
     fontSize: 12,
     color: '#666',
-  },
-  errorMessage: {
-    color: '#e53e3e',
-    marginBottom: 15,
-    textAlign: 'center',
   },
 });
 
