@@ -240,7 +240,7 @@ function RequestDetailsPage() {
                             </View>
                         </View>
 
-                        {status === "pending" && (
+                        {status === "pending" && item.status === "pending" && (
                             <View style={styles.actionContainer}>
                                 <TouchableOpacity
                                     style={styles.acceptButton}

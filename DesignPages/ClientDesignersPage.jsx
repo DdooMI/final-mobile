@@ -1,38 +1,64 @@
 import { useState, useEffect } from "react";
 import { View, Text, Image, TouchableOpacity, ActivityIndicator, FlatList, StyleSheet } from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
+import { db } from "../firebase/firebaseConfig";
+import { useAuth } from "../firebase/auth";
+import { getDesignerRating } from "../firebase/ratings";
 
 function ClientDesignersPage() {
+  const { user, role } = useAuth();
   const [designers, setDesigners] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const navigation = useNavigation();
 
   useEffect(() => {
-    const mockDesigners = [
-      {
-        id: "1",
-        email: "designer1@example.com",
-        name: "Designer One",
-        photoURL: "https://scontent.fcai19-7.fna.fbcdn.net/v/t1.6435-9/192170697_3894578160595501_6205178212102252464_n.jpg?_nc_cat=111&ccb=1-7&_nc_sid=6ee11a&_nc_ohc=Jum3WTQq7j8Q7kNvgEZ1gsY&_nc_oc=Adm6tpTY_7-UCve1BbW6U8H-k_ZY3GHDhx431M0XT9VCKM51n-VEo1k7cJrlRnrZljQ&_nc_zt=23&_nc_ht=scontent.fcai19-7.fna&_nc_gid=x0jW8w2SO4CbwZRzG47Gcw&oh=00_AYFocdAsIOIKbm0cDEgBf4HkOCe1h1GIb8rRUcB8Drbvow&oe=6810C6C0",
-        specialization: "Interior Design",
-        experience: "5 years",
-        bio: "Passionate about creating modern and stylish spaces.",
-      },
-      {
-        id: "2",
-        email: "designer2@example.com",
-        name: "Designer Two",
-        photoURL: "https://scontent.fcai19-7.fna.fbcdn.net/v/t1.6435-9/117168079_3066746570045335_6286471171469300030_n.jpg?_nc_cat=110&ccb=1-7&_nc_sid=a5f93a&_nc_ohc=hPL5mJdEUjwQ7kNvgH7ltBk&_nc_oc=AdnrMOK1-dR1Twa95xPWr3h8P4RLaLZtomVYhQTRGhBvKBfhwFjRtcSqyu5mcvpnQFA&_nc_zt=23&_nc_ht=scontent.fcai19-7.fna&_nc_gid=B3_DNyWxXGpYHPpiJRrH2w&oh=00_AYEeMrWwQ5xq84n44Wcv-ZNJ0-dJ8Ru_5I_gi2iN87JG7A&oe=6810D9DA",
-        specialization: "Graphic Design",
-        experience: "3 years",
-        bio: "Expert in branding and digital designs.",
-      }
-    ];
+    const fetchDesigners = async () => {
+      try {
+        const q = query(
+          collection(db, "users"),
+          where("role", "==", "designer")
+        );
+        const querySnapshot = await getDocs(q);
+        const designersData = [];
 
-    setTimeout(() => {
-      setDesigners(mockDesigners);
-      setLoading(false);
-    }, 1000);
+        for (const docRef of querySnapshot.docs) {
+          const designerData = docRef.data();
+
+          // Get designer's profile info
+          const profileRef = doc(db, "users", docRef.id, "profile", "profileInfo");
+          const profileSnap = await getDoc(profileRef);
+          let profileData = { name: "Designer", photoURL: "" };
+
+          if (profileSnap.exists()) {
+            profileData = profileSnap.data();
+          }
+
+          // Get designer's rating
+          const rating = await getDesignerRating(docRef.id);
+
+          designersData.push({
+            id: docRef.id,
+            email: designerData.email,
+            name: profileData.name,
+            photoURL: profileData.photoURL ,
+            rating: rating.averageRating || 0,
+            ratingCount: rating.ratingCount || 0
+          });
+        }
+
+        // Sort designers by rating (highest first)
+        const sortedDesigners = designersData.sort((a, b) => b.rating - a.rating);
+        setDesigners(sortedDesigners);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDesigners();
   }, []);
 
   return (
@@ -47,10 +73,15 @@ function ClientDesignersPage() {
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <View style={styles.card}>
-              <Image source={{ uri: item.photoURL }} style={styles.image} />
+              {item.photoURL ? <Image source={{ uri: item.photoURL }} style={styles.image} /> : <Image source={require("../assets/person.gif")} style={styles.image} />}
               <View style={styles.cardContent}>
-                <Text style={styles.name}>{item.name}</Text>
-                <Text style={styles.email}>{item.email}</Text>
+                <View style={styles.nameRatingContainer}>
+                  <Text style={styles.name}>{item.name}</Text>
+                  <View style={styles.ratingContainer}>
+                    <Text style={styles.rating}>{item.rating.toFixed(1)} ⭐</Text>
+                    <Text style={styles.ratingCount}>({item.ratingCount} reviews)</Text>
+                  </View>
+                </View>
                 <TouchableOpacity
                   style={styles.button}
                   onPress={() => navigation.navigate("DesignerPortfolio", { designer: item })}
@@ -67,10 +98,22 @@ function ClientDesignersPage() {
 }
 
 const styles = StyleSheet.create({
+  nameRatingContainer: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+  ratingContainer: { flexDirection: "row", alignItems: "center" },
+  rating: { fontSize: 14, color: "#666", marginRight: 4 },
+  ratingCount: { fontSize: 12, color: "#999" },
   container: { flex: 1, backgroundColor: "#F9FAFB", padding: 16 },
   loaderContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   card: { backgroundColor: "#FFF", borderRadius: 8, padding: 16, marginBottom: 12, elevation: 3 },
-  image: { width: "100%", height: 150, borderRadius: 8, resizeMode: "cover" },
+  image: { 
+    width: "100%", 
+    height: 150, 
+    borderRadius: 8, 
+    resizeMode: "contain", 
+    backgroundColor: "#f5f5f5",
+    borderWidth: 1,
+    borderColor: "#e0e0e0"
+  },
   cardContent: { marginTop: 12 },
   name: { fontSize: 18, fontWeight: "bold", color: "#333" },
   email: { fontSize: 14, color: "#666", marginBottom: 8 },
