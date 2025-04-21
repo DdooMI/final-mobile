@@ -1,79 +1,148 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, TouchableOpacity, FlatList, StyleSheet, Modal } from "react-native";
+import { View, Text, TouchableOpacity, FlatList, StyleSheet, Modal, ActivityIndicator, ScrollView } from "react-native";
+import { useAuth } from "../firebase/auth";
+import { useNavigation, useRoute } from '@react-navigation/native';
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  doc,
+  getDoc,
+} from "firebase/firestore";
+import { db } from "../firebase/firebaseConfig";
 import { formatDistanceToNow } from "date-fns";
-import { ar } from "date-fns/locale";
-import { Drawer } from "react-native-paper";
-import { useNavigation } from '@react-navigation/native';
 
-// صفحة MyProposalsScreen
-export default function MyProposalsScreen() {
+export default function DesignerProposalsPage() {
+  const { user } = useAuth();
   const navigation = useNavigation();
+  const route = useRoute();
   const [proposals, setProposals] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [selectedProposal, setSelectedProposal] = useState(null);
-  const [filter, setFilter] = useState("All");
-  const [drawerVisible, setDrawerVisible] = useState(false);
+  const [requestDetails, setRequestDetails] = useState({});
+  const [activeFilter, setActiveFilter] = useState("all");
+  const [clientNames, setClientNames] = useState({});
 
   useEffect(() => {
-    const dummyProposals = [
-      {
-        id: "p1",
-        title: "تصميم غرفة معيشة",
-        description: "أنا مصمم محترف",
-        price: 10,
-        estimatedTime: 1,
-        client: "ossamas",
-        status: "pending",
-        createdAt: formatDistanceToNow(new Date(), { addSuffix: true, locale: ar }),
-        request: {
-          title: "living room",
-          budget: 10,
-          duration: 1,
-          roomType: "living",
-          postedAt: formatDistanceToNow(new Date(), { addSuffix: true, locale: ar }),
-        },
-      },
-      {
-        id: "p2",
-        title: "تصميم مكتب",
-        description: "خبرة في تصميم المكاتب",
-        price: 15,
-        estimatedTime: 2,
-        client: "client2",
-        status: "accepted",
-        createdAt: formatDistanceToNow(new Date(), { addSuffix: true, locale: ar }),
-        request: {
-          title: "office",
-          budget: 15,
-          duration: 2,
-          roomType: "office",
-          postedAt: formatDistanceToNow(new Date(), { addSuffix: true, locale: ar }),
-        },
-      },
-      {
-        id: "p3",
-        title: "تصميم مطبخ عصري",
-        description: "تصميم مميز لمطبخ عصري",
-        price: 20,
-        estimatedTime: 3,
-        client: "client3",
-        status: "rejected", // عرض مرفوض
-        createdAt: formatDistanceToNow(new Date(), { addSuffix: true, locale: ar }),
-        request: {
-          title: "modern kitchen",
-          budget: 20,
-          duration: 3,
-          roomType: "kitchen",
-          postedAt: formatDistanceToNow(new Date(), { addSuffix: true, locale: ar }),
-        },
-      },
-    ];
-    setProposals(dummyProposals);
-  }, []);
+    const fetchProposals = async () => {
+      try {
+        // Get designer's proposals
+        const q = query(
+          collection(db, "designProposals"),
+          where("designerId", "==", user.uid)
+        );
+        const querySnapshot = await getDocs(q);
+        const proposalsData = [];
 
-  const filteredProposals = proposals.filter((proposal) =>
-    filter === "All" ? true : proposal.status === filter.toLowerCase()
-  );
+        querySnapshot.forEach((doc) => {
+          proposalsData.push({
+            id: doc.id,
+            ...doc.data(),
+            createdAtTimestamp: doc.data().createdAt ? doc.data().createdAt.toDate() : null,
+            createdAt:
+              doc.data().createdAt
+                ? formatDistanceToNow(doc.data().createdAt.toDate(), { addSuffix: true })
+                : "Unknown date",
+          });
+        });
 
+        // Sort proposals from newest to oldest
+        proposalsData.sort((a, b) => {
+          // Handle cases where createdAt might be null
+          if (!a.createdAtTimestamp) return 1;
+          if (!b.createdAtTimestamp) return -1;
+          // Sort in descending order (newest first)
+          return b.createdAtTimestamp - a.createdAtTimestamp;
+        });
+
+        setProposals(proposalsData);
+
+        // Check if there's a proposalId in the route params
+        const proposalId = route.params?.proposalId;
+        
+        if (proposalId) {
+          // Find the proposal with the matching ID
+          const proposalToSelect = proposalsData.find(prop => prop.id === proposalId);
+          if (proposalToSelect) {
+            setSelectedProposal(proposalToSelect);
+          }
+        }
+
+        // Get request details for each proposal
+        const requestDetailsData = {};
+        for (const proposal of proposalsData) {
+          if (proposal.requestId) {
+            const requestDoc = await getDoc(
+              doc(db, "designRequests", proposal.requestId)
+            );
+            if (requestDoc.exists()) {
+              const requestData = requestDoc.data();
+              requestDetailsData[proposal.requestId] = {
+                ...requestData,
+                createdAt:
+                  requestData.createdAt
+                    ? formatDistanceToNow(requestData.createdAt.toDate(), { addSuffix: true })
+                    : "Unknown date",
+              };
+            }
+          }
+        }
+
+        setRequestDetails(requestDetailsData);
+
+        // Get client names for each proposal
+        const clientIds = proposalsData.map(proposal => proposal.clientId).filter(Boolean);
+        const uniqueClientIds = [...new Set(clientIds)];
+        const clientNamesData = {};
+
+        for (const clientId of uniqueClientIds) {
+          // Get client's profile info
+          const profileRef = collection(db, "users", clientId, "profile");
+          const profileSnap = await getDocs(profileRef);
+          let clientName = "Client";
+
+          if (!profileSnap.empty) {
+            clientName = profileSnap.docs[0].data().name || "Client";
+          }
+
+          clientNamesData[clientId] = clientName;
+        }
+
+        setClientNames(clientNamesData);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProposals();
+  }, [user.uid]);
+
+  const getStatusBadgeClass = (status) => {
+    switch (status) {
+      case "pending":
+        return "bg-yellow-100 text-yellow-800";
+      case "accepted":
+        return "bg-green-100 text-green-800";
+      case "rejected":
+        return "bg-red-100 text-red-800";
+      case "completed":
+        return "bg-blue-100 text-blue-800";
+      default:
+        return "bg-gray-100 text-gray-800";
+    }
+  };
+
+  // Filter proposals based on status
+  const filteredProposals =
+    activeFilter === "all"
+      ? proposals
+      : proposals.filter((proposal) => proposal.status === activeFilter);
+
+  // Helper function to get status style for React Native
   const getStatusStyle = (status) => {
     switch (status) {
       case "pending":
@@ -92,14 +161,14 @@ export default function MyProposalsScreen() {
         };
       case "completed":
         return {
-          backgroundColor: "#99bbff", // لون أغمق من #ccdfff
+          backgroundColor: "#99bbff",
           borderColor: "#3366cc",
           borderWidth: 1,
           borderRadius: 8,
         };
       case "rejected":
         return {
-          backgroundColor: "#ff9999", // لون أغمق من #ffd6d6
+          backgroundColor: "#ff9999",
           borderColor: "#cc0000",
           borderWidth: 1,
           borderRadius: 8,
@@ -111,130 +180,248 @@ export default function MyProposalsScreen() {
     }
   };
 
+  // Helper function to get status text color for React Native
   const getStatusTextColor = (status) => {
     switch (status) {
       case "pending":
         return { color: "#FFA500" };
       case "accepted":
-        return { color: "#2e7d32" }; // أخضر أغمق شوية
+        return { color: "#2e7d32" };
       case "completed":
-        return { color: "#003399" }; // أزرق غامق
+        return { color: "#003399" };
       case "rejected":
-        return { color: "#b30000" }; // أحمر غامق
+        return { color: "#b30000" };
       default:
         return { color: "#000" };
     }
   };
 
-  const markAsCompleted = () => {
-    const updated = proposals.map((p) =>
-      p.id === selectedProposal.id ? { ...p, status: "completed" } : p
-    );
-    setProposals(updated);
-    setSelectedProposal((prev) => ({ ...prev, status: "completed" }));
-  };
-
-  const handleNavigate = () => {
-    if (selectedProposal) {
-      // تنقل إلى صفحة المشروع باستخدام React Navigation
-      navigation.navigate('ProjectPage', { proposal: selectedProposal });
-    }
+  // Function to handle navigation to project page
+  const handleNavigateToProject = (proposalId) => {
+    navigation.navigate('ProjectPage', { proposalId });
   };
 
   return (
     <View style={styles.container}>
-
-      <TouchableOpacity style={styles.drawerButton} onPress={() => setDrawerVisible(true)}>
-        <Text style={styles.drawerButtonText}>Filter Options</Text>
-      </TouchableOpacity>
-
-      <FlatList
-        data={filteredProposals}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
+      <Text style={styles.pageTitle}>My Proposals</Text>
+      
+      <View style={styles.filterContainer}>
+        <Text style={styles.subtitle}>
+          Track the status of your design proposals submitted to clients
+        </Text>
+        
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterButtonsContainer}>
           <TouchableOpacity
-            style={[styles.proposalItem, getStatusStyle(item.status)]}
-            onPress={() => setSelectedProposal(item)}
+            style={[
+              styles.filterButton,
+              activeFilter === "all" && styles.activeFilterButton,
+            ]}
+            onPress={() => setActiveFilter("all")}
           >
-            <View style={styles.proposalContent}>
-              <Text style={styles.proposalTitle}>{item.title}</Text>
-              <Text style={[styles.proposalStatus, getStatusTextColor(item.status)]}>
-                {item.status}
-              </Text>
-            </View>
-            <Text style={styles.proposalDescription}>{item.description}</Text>
-            <View style={styles.proposalPriceTime}>
-              <Text style={styles.proposalDetail}>Price: ${item.price}</Text>
-              <Text style={styles.proposalDetail}>Time: {item.estimatedTime} days</Text>
-            </View>
-            <Text style={styles.proposalCreatedAt}>Submitted: {item.createdAt}</Text>
+            <Text style={activeFilter === "all" ? styles.activeFilterText : styles.filterText}>
+              All
+            </Text>
           </TouchableOpacity>
-        )}
-      />
+          
+          <TouchableOpacity
+            style={[
+              styles.filterButton,
+              activeFilter === "pending" && styles.activeFilterButton,
+            ]}
+            onPress={() => setActiveFilter("pending")}
+          >
+            <Text style={activeFilter === "pending" ? styles.activeFilterText : styles.filterText}>
+              Pending
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[
+              styles.filterButton,
+              activeFilter === "accepted" && styles.activeFilterButton,
+            ]}
+            onPress={() => setActiveFilter("accepted")}
+          >
+            <Text style={activeFilter === "accepted" ? styles.activeFilterText : styles.filterText}>
+              Accepted
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[
+              styles.filterButton,
+              activeFilter === "rejected" && styles.activeFilterButton,
+            ]}
+            onPress={() => setActiveFilter("rejected")}
+          >
+            <Text style={activeFilter === "rejected" ? styles.activeFilterText : styles.filterText}>
+              Rejected
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[
+              styles.filterButton,
+              activeFilter === "completed" && styles.activeFilterButton,
+            ]}
+            onPress={() => setActiveFilter("completed")}
+          >
+            <Text style={activeFilter === "completed" ? styles.activeFilterText : styles.filterText}>
+              Completed
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
 
-      <Modal visible={drawerVisible} transparent animationType="slide">
-        <View style={styles.drawerContainer}>
-          <View style={styles.drawerContent}>
-            <Text style={styles.drawerHeader}>Filter Proposals</Text>
-            {["All", "Pending", "Accepted", "Rejected", "Completed"].map((item) => (
-              <Drawer.Item
-                key={item}
-                label={item}
-                active={filter === item}
-                onPress={() => {
-                  setFilter(item);
-                  setDrawerVisible(false);
-                }}
-              />
-            ))}
-            <TouchableOpacity style={styles.closeDrawerButton} onPress={() => setDrawerVisible(false)}>
-              <Text style={styles.closeDrawerButtonText}>Close</Text>
-            </TouchableOpacity>
-          </View>
+      {error && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>
+            <Text style={styles.errorBold}>Error!</Text> {error}
+          </Text>
         </View>
-      </Modal>
+      )}
 
-      <Modal visible={!!selectedProposal} transparent animationType="slide">
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#C19A6B" />
+        </View>
+      ) : filteredProposals.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>
+            {proposals.length === 0
+              ? "You haven't submitted any design proposals yet."
+              : "No proposals found with the selected filter."}
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredProposals}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={[styles.proposalItem, getStatusStyle(item.status)]}
+              onPress={() => setSelectedProposal(item)}
+            >
+              <View style={styles.proposalHeader}>
+                <Text style={styles.proposalTitle}>
+                  {requestDetails[item.requestId]?.title || "Unknown Request"}
+                </Text>
+                <Text style={[styles.proposalStatus, getStatusTextColor(item.status)]}>
+                  {item.status}
+                </Text>
+              </View>
+              <Text style={styles.proposalDescription}>{item.description}</Text>
+              <View style={styles.proposalPriceTime}>
+                <Text style={styles.proposalDetail}>Price: ${item.price}</Text>
+                <Text style={styles.proposalDetail}>Time: {item.estimatedTime} days</Text>
+              </View>
+              <Text style={styles.proposalCreatedAt}>Submitted: {item.createdAt}</Text>
+            </TouchableOpacity>
+          )}
+        />
+      )}
+
+      <Modal
+        visible={!!selectedProposal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelectedProposal(null)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             {selectedProposal && (
-              <>
+              <ScrollView>
                 <Text style={styles.sectionTitle}>Proposal Details</Text>
                 <View style={[styles.proposalItem, getStatusStyle(selectedProposal.status)]}>
-                  <View style={styles.proposalContent}>
-                    <Text style={styles.proposalTitle}>{selectedProposal.title}</Text>
+                  <View style={styles.proposalHeader}>
+                    <Text style={styles.proposalTitle}>
+                      {requestDetails[selectedProposal.requestId]?.title || "Unknown Request"}
+                    </Text>
                     <Text style={[styles.proposalStatus, getStatusTextColor(selectedProposal.status)]}>
                       {selectedProposal.status}
                     </Text>
                   </View>
                   <Text style={styles.proposalDescription}>{selectedProposal.description}</Text>
-                  <View style={styles.proposalPriceTime}>
-                    <Text style={styles.proposalDetail}>Price: ${selectedProposal.price}</Text>
-                    <Text style={styles.proposalDetail}>Time: {selectedProposal.estimatedTime} days</Text>
+                  <View style={styles.detailsGrid}>
+                    <View style={styles.detailItem}>
+                      <Text style={styles.detailLabel}>Your Price:</Text>
+                      <Text style={styles.detailValue}>${selectedProposal.price}</Text>
+                    </View>
+                    <View style={styles.detailItem}>
+                      <Text style={styles.detailLabel}>Estimated Time:</Text>
+                      <Text style={styles.detailValue}>{selectedProposal.estimatedTime} days</Text>
+                    </View>
+                    <View style={styles.detailItem}>
+                      <Text style={styles.detailLabel}>Client:</Text>
+                      <Text style={styles.detailValue}>
+                        {clientNames[selectedProposal.clientId] || "Unknown Client"}
+                      </Text>
+                    </View>
+                    <View style={styles.detailItem}>
+                      <Text style={styles.detailLabel}>Submitted:</Text>
+                      <Text style={styles.detailValue}>{selectedProposal.createdAt}</Text>
+                    </View>
                   </View>
-                  <Text style={styles.proposalClient}>Client: {selectedProposal.client}</Text>
-                  <Text style={styles.proposalCreatedAt}>Submitted: {selectedProposal.createdAt}</Text>
                 </View>
 
-                {selectedProposal.status === "accepted" && (
-                  <TouchableOpacity style={styles.actionButton} onPress={markAsCompleted}>
-                    <Text style={styles.actionButtonText}>✅ Mark as Completed</Text>
-                  </TouchableOpacity>
+                <Text style={styles.sectionSubtitle}>Request Information</Text>
+                {requestDetails[selectedProposal.requestId] ? (
+                  <View style={styles.requestInfoContainer}>
+                    <Text style={styles.requestDescription}>
+                      {requestDetails[selectedProposal.requestId].description}
+                    </Text>
+                    <View style={styles.detailsGrid}>
+                      <View style={styles.detailItem}>
+                        <Text style={styles.detailLabel}>Budget:</Text>
+                        <Text style={styles.detailValue}>
+                          ${requestDetails[selectedProposal.requestId].budget}
+                        </Text>
+                      </View>
+                      <View style={styles.detailItem}>
+                        <Text style={styles.detailLabel}>Duration:</Text>
+                        <Text style={styles.detailValue}>
+                          {requestDetails[selectedProposal.requestId].duration} days
+                        </Text>
+                      </View>
+                      <View style={styles.detailItem}>
+                        <Text style={styles.detailLabel}>Room Type:</Text>
+                        <Text style={styles.detailValue}>
+                          {requestDetails[selectedProposal.requestId].roomType}
+                        </Text>
+                      </View>
+                      <View style={styles.detailItem}>
+                        <Text style={styles.detailLabel}>Posted:</Text>
+                        <Text style={styles.detailValue}>
+                          {requestDetails[selectedProposal.requestId].createdAt}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.noInfoContainer}>
+                    <Text style={styles.noInfoText}>Request details not available</Text>
+                  </View>
                 )}
 
-                {(selectedProposal.status === "accepted" || selectedProposal.status === "completed") && (
+                {selectedProposal.status !== "rejected" && (
                   <TouchableOpacity
                     style={styles.actionButton}
-                    onPress={handleNavigate}
+                    onPress={() => {
+                      setSelectedProposal(null);
+                      handleNavigateToProject(selectedProposal.id);
+                    }}
                   >
-                    <Text style={styles.actionButtonText}>🔍 View Project Page</Text>
+                    <Text style={styles.actionButtonText}>View Project Page</Text>
                   </TouchableOpacity>
                 )}
 
-                <TouchableOpacity style={styles.closeButton} onPress={() => setSelectedProposal(null)}>
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={() => setSelectedProposal(null)}
+                >
                   <Text style={styles.closeButtonText}>Close</Text>
                 </TouchableOpacity>
-              </>
+              </ScrollView>
             )}
           </View>
         </View>
@@ -244,29 +431,208 @@ export default function MyProposalsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8f8f8", padding: 16 },
-  pageTitle: { fontSize: 24, fontWeight: "bold", marginBottom: 16, textAlign: "center" },
-  drawerButton: { backgroundColor: "#c19a6b", padding: 10, borderRadius: 5, marginBottom: 16, alignSelf: 'flex-start' },
-  drawerButtonText: { color: '#fff', fontWeight: 'bold' },
-  drawerContainer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  drawerContent: { backgroundColor: '#fff', padding: 20, borderTopLeftRadius: 10, borderTopRightRadius: 10 },
-  drawerHeader: { fontSize: 18, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
-  closeDrawerButton: { backgroundColor: '#c19a6b', padding: 10, borderRadius: 5, marginTop: 20, alignItems: 'center' },
-  closeDrawerButtonText: { color: '#fff', fontWeight: 'bold' },
-  proposalItem: { backgroundColor: "#fff", padding: 12, borderRadius: 8, marginBottom: 10 },
-  proposalContent: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  proposalTitle: { fontSize: 16, fontWeight: "bold" },
-  proposalDescription: { color: "#555", marginVertical: 4 },
-  proposalPriceTime: { flexDirection: "row", justifyContent: "space-between", marginTop: 4 },
-  proposalDetail: { color: "#777", fontSize: 12 },
-  proposalClient: { fontSize: 12, fontWeight: "bold", color: "#333", marginTop: 4 },
-  proposalCreatedAt: { color: "#777", fontSize: 12, marginTop: 4 },
-  proposalStatus: { fontSize: 12, fontWeight: 'bold' },
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0, 0, 0, 0.5)", justifyContent: "center", alignItems: "center" },
-  modalContainer: { backgroundColor: "#fff", padding: 16, borderRadius: 8, width: "90%" },
-  sectionTitle: { fontSize: 20, fontWeight: "bold", marginBottom: 8, textAlign: "center" },
-  closeButton: { backgroundColor: "#c19a6b", padding: 10, borderRadius: 8, alignItems: "center", marginTop: 16 },
-  closeButtonText: { color: "#fff", fontWeight: "bold" },
-  actionButton: { backgroundColor: "#c19a6b", padding: 10, borderRadius: 8, alignItems: "center", marginTop: 10 },
-  actionButtonText: { color: "#fff", fontWeight: "bold" },
+  container: { 
+    flex: 1, 
+    backgroundColor: "#f8f8f8", 
+    padding: 16 
+  },
+  pageTitle: { 
+    fontSize: 24, 
+    fontWeight: "bold", 
+    marginBottom: 16, 
+    textAlign: "center",
+    color: "#333"
+  },
+  subtitle: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 12
+  },
+  filterContainer: {
+    marginBottom: 16
+  },
+  filterButtonsContainer: {
+    flexDirection: "row",
+    marginTop: 8
+  },
+  filterButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    backgroundColor: "#e0e0e0",
+    marginRight: 8
+  },
+  activeFilterButton: {
+    backgroundColor: "#C19A6B"
+  },
+  filterText: {
+    color: "#666",
+    fontSize: 13
+  },
+  activeFilterText: {
+    color: "white",
+    fontSize: 13,
+    fontWeight: "bold"
+  },
+  errorContainer: {
+    backgroundColor: "#FFEBEE",
+    borderWidth: 1,
+    borderColor: "#FFCDD2",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16
+  },
+  errorText: {
+    color: "#B71C1C"
+  },
+  errorBold: {
+    fontWeight: "bold"
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    height: 200
+  },
+  emptyContainer: {
+    backgroundColor: "white",
+    borderRadius: 8,
+    padding: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2
+  },
+  emptyText: {
+    color: "#666",
+    fontSize: 16,
+    textAlign: "center"
+  },
+  proposalItem: {
+    backgroundColor: "white",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 10
+  },
+  proposalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center"
+  },
+  proposalTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#333",
+    flex: 1
+  },
+  proposalStatus: {
+    fontSize: 12,
+    fontWeight: "bold"
+  },
+  proposalDescription: {
+    color: "#555",
+    marginVertical: 4
+  },
+  proposalPriceTime: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 4
+  },
+  proposalDetail: {
+    color: "#777",
+    fontSize: 12
+  },
+  proposalCreatedAt: {
+    color: "#777",
+    fontSize: 12,
+    marginTop: 4
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center"
+  },
+  modalContainer: {
+    backgroundColor: "white",
+    borderRadius: 8,
+    padding: 16,
+    width: "90%",
+    maxHeight: "80%"
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    marginBottom: 12,
+    textAlign: "center",
+    color: "#333"
+  },
+  sectionSubtitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginTop: 16,
+    marginBottom: 8,
+    color: "#333"
+  },
+  detailsGrid: {
+    marginTop: 8
+  },
+  detailItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 6
+  },
+  detailLabel: {
+    color: "#666",
+    fontSize: 14
+  },
+  detailValue: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#333"
+  },
+  requestInfoContainer: {
+    backgroundColor: "#f5f5f5",
+    padding: 12,
+    borderRadius: 8
+  },
+  requestDescription: {
+    color: "#555",
+    marginBottom: 12
+  },
+  noInfoContainer: {
+    padding: 16,
+    alignItems: "center"
+  },
+  noInfoText: {
+    color: "#999"
+  },
+  actionButton: {
+    backgroundColor: "#C19A6B",
+    padding: 12,
+    borderRadius: 8,
+    alignItems: "center",
+    marginTop: 16
+  },
+  actionButtonText: {
+    color: "white",
+    fontWeight: "bold"
+  },
+  closeButton: {
+    backgroundColor: "#C19A6B",
+    padding: 12,
+    borderRadius: 8,
+    alignItems: "center",
+    marginTop: 12,
+    marginBottom: 8
+  },
+  closeButtonText: {
+    color: "white",
+    fontWeight: "bold"
+  }
 });
+
+
