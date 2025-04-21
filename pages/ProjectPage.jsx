@@ -12,11 +12,14 @@ import {
   TextInput,
   Alert,
   Linking,
-  Share
+  Share,
+  Platform
 } from 'react-native';
+import { WebView } from 'react-native-webview';
 // No external document picker needed
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import {
   collection,
   doc,
@@ -607,31 +610,51 @@ const ProjectPage = () => {
   // Handle file upload from device using expo-document-picker
   const pickHtmlFile = async () => {
     try {
+      // Show loading indicator
+      setUpdateLoading(true);
+      
+      // Use DocumentPicker to select a file
       const result = await DocumentPicker.getDocumentAsync({
         type: ['text/html', 'application/octet-stream'],
         copyToCacheDirectory: true
       });
       
-      if (result.type === 'success') {
-        // Check if file has .html or .htm extension
-        const fileName = result.name;
-        if (!fileName.toLowerCase().endsWith('.html') && !fileName.toLowerCase().endsWith('.htm')) {
-          setError('Only .html/.htm files are supported');
-          return;
-        }
-        
-        // Read the file content
-        const fileContent = await fetch(result.uri).then(res => res.text());
-        
-        // Process the HTML content
-        handleHtmlUploadSuccess({
-          htmlContent: fileContent,
-          fileName: fileName
-        });
+      // Check if the user canceled the picker
+      if (result.canceled) {
+        setUpdateLoading(false);
+        return;
       }
+      
+      // Get the first selected asset (file)
+      const file = result.assets[0];
+      if (!file) {
+        throw new Error('No file selected');
+      }
+      
+      // Check if file has .html or .htm extension
+      const fileName = file.name;
+      if (!fileName.toLowerCase().endsWith('.html') && !fileName.toLowerCase().endsWith('.htm')) {
+        setError('Only .html/.htm files are supported');
+        setUpdateLoading(false);
+        return;
+      }
+      
+      console.log('Selected HTML file:', fileName);
+      
+      // Read the file content
+      const fileContent = await FileSystem.readAsStringAsync(file.uri);
+      
+      // Process the HTML content
+      await handleHtmlUploadSuccess({
+        htmlContent: fileContent,
+        fileName: fileName
+      });
+      
+      setUpdateLoading(false);
     } catch (error) {
       console.error('Error with file selection:', error);
-      Alert.alert('Error', 'Failed to upload HTML file. Please try again.');
+      Alert.alert('Error', 'Failed to upload HTML file: ' + (error.message || 'Please try again.'));
+      setUpdateLoading(false);
     }
   };
 
@@ -816,24 +839,151 @@ const ProjectPage = () => {
                   style={styles.downloadButton}
                   onPress={() => {
                     Alert.alert(
-                      'Download HTML',
-                      'This feature is limited in the mobile version. The HTML content is available but cannot be downloaded directly to your device.'
+                      'HTML Options',
+                      'Choose an action for the HTML content:',
+                      [
+                        {
+                          text: 'Copy to Clipboard',
+                          onPress: () => {
+                            Share.share({
+                              message: htmlContent,
+                              title: htmlFileName || 'design.html'
+                            }).then(() => {
+                              Alert.alert('Success', 'HTML content copied to clipboard!');
+                            }).catch(error => {
+                              console.error('Error sharing HTML:', error);
+                              Alert.alert('Error', 'Failed to copy HTML content.');
+                            });
+                          }
+                        },
+                        {
+                          text: 'Share HTML',
+                          onPress: () => {
+                            Share.share({
+                              message: `HTML Design: ${htmlContent}`,
+                              title: htmlFileName || 'design.html'
+                            });
+                          }
+                        },
+                        {
+                          text: 'Open in Browser',
+                          onPress: () => {
+                            // Create a data URI for the HTML content
+                            const htmlUri = `data:text/html;charset=UTF-8,${encodeURIComponent(htmlContent)}`;
+                            Linking.canOpenURL(htmlUri).then(supported => {
+                              if (supported) {
+                                return Linking.openURL(htmlUri);
+                              } else {
+                                Alert.alert('Error', 'Cannot open HTML in browser on this device.');
+                              }
+                            }).catch(error => {
+                              console.error('Error opening URL:', error);
+                              Alert.alert('Error', 'Failed to open HTML in browser.');
+                            });
+                          }
+                        },
+                        {
+                          text: 'Download as HTML File',
+                          onPress: async () => {
+                            try {
+                              // Get the document directory path
+                              const fileName = htmlFileName || 'design.html';
+                              const fileUri = FileSystem.documentDirectory + fileName;
+                              
+                              // Write the HTML content to a file
+                              await FileSystem.writeAsStringAsync(fileUri, htmlContent);
+                              
+                              // Check if the file was created successfully
+                              const fileInfo = await FileSystem.getInfoAsync(fileUri);
+                              
+                              if (fileInfo.exists) {
+                                // On iOS, use the share functionality to save the file
+                                if (Platform.OS === 'ios') {
+                                  await Share.share({
+                                    url: fileUri,
+                                    title: fileName,
+                                  });
+                                  Alert.alert('Success', 'HTML file saved successfully!');
+                                } 
+                                // On Android, save to downloads folder if possible
+                                else {
+                                  // For Android, we can only save to app's directory
+                                  Alert.alert(
+                                    'File Saved',
+                                    `HTML file saved to: ${fileUri}\n\nYou can access this file through your device's file manager in the Expo directory.`,
+                                    [
+                                      { text: 'OK' },
+                                      { 
+                                        text: 'Share File', 
+                                        onPress: () => {
+                                          Share.share({
+                                            url: fileUri,
+                                            title: fileName,
+                                          });
+                                        }
+                                      }
+                                    ]
+                                  );
+                                }
+                              } else {
+                                throw new Error('File was not created');
+                              }
+                            } catch (error) {
+                              console.error('Error saving HTML file:', error);
+                              Alert.alert('Error', 'Failed to save HTML file. ' + error.message);
+                            }
+                          }
+                        },
+                        { text: 'Cancel', style: 'cancel' }
+                      ]
                     );
                   }}
                 >
                   <View style={styles.buttonContent}>
-                    <Ionicons name="download-outline" size={16} color="#FFFFFF" />
-                    <Text style={styles.downloadButtonText}>Download HTML</Text>
+                    <Ionicons name="ellipsis-horizontal" size={16} color="#FFFFFF" />
+                    <Text style={styles.downloadButtonText}>HTML Options</Text>
                   </View>
                 </TouchableOpacity>
               )}
             </View>
             
             <View style={styles.htmlPreviewContent}>
-              <WebView
-                source={{ html: htmlContent }}
-                style={styles.webView}
-              />
+              {htmlContent ? (
+                <View style={styles.htmlContainer}>
+                  <View style={styles.htmlPreviewHeader}>
+                    <Text style={styles.htmlPreviewTitle}>HTML Preview</Text>
+                  </View>
+                  <WebView
+                    source={{
+                      html:htmlContent
+                    }}
+                    style={styles.webView}
+                    originWhitelist={['*']}
+                    javaScriptEnabled={true}
+                    domStorageEnabled={true}
+                    androidHardwareAccelerationDisabled={true}
+                    startInLoadingState={true}
+                    renderLoading={() => (
+                      <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.8)'}}>
+                        <ActivityIndicator size="large" color="#C19A6B" />
+                        <Text style={{marginTop: 10, color: '#666'}}>Loading preview...</Text>
+                      </View>
+                    )}
+                    onError={(syntheticEvent) => {
+                      const { nativeEvent } = syntheticEvent;
+                      console.error('WebView error: ', nativeEvent);
+                      Alert.alert('Error', 'There was a problem displaying the HTML content.');
+                    }}
+                  />
+                </View>
+              ) : (
+                <View style={styles.noContentContainer}>
+                  <Ionicons name="document-text-outline" size={48} color="#999" />
+                  <Text style={styles.noContentText}>
+                    No HTML content available for this project.
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
         )}
@@ -1329,18 +1479,49 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginLeft: 5,
   },
-  webView: {
+  // HTML Preview styles with WebView
+  htmlPreviewContent: {
     width: '100%',
-    height: 400,
-    border: 'none',
+    marginBottom: 20,
   },
-  webViewContainer: {
-    height: 400,
+  htmlContainer: {
     width: '100%',
-    overflow: 'hidden',
+    height: 450,
     borderWidth: 1,
     borderColor: '#E5E7EB',
     borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+  },
+  htmlPreviewHeader: {
+    padding: 10,
+    backgroundColor: '#f5f5f5',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  htmlPreviewTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
+  },
+  webView: {
+    flex: 1,
+    height: 450,
+    backgroundColor: '#ffffff',
+  },
+  noContentContainer: {
+    padding: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    backgroundColor: '#f9f9f9',
+  },
+  noContentText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 10,
   },
   previewHeader: {
     flexDirection: 'row',

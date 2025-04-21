@@ -10,15 +10,18 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Alert,
+  Modal,
+  FlatList,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import UserBalance from "../payment/user-balance";
 import { useNavigation } from "@react-navigation/native";
-import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, getDoc, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase/firebaseConfig";
 import { useAuth } from "../firebase/auth";
 import { axiosApi } from "../axios/axiosConfig";
 import { MaterialIcons } from "@expo/vector-icons";
+import { getDesignerRating } from "../firebase/ratings";
 
 export default function ProfileScreen() {
   const { user, role, profile, updateProfile, logout } = useAuth();
@@ -34,7 +37,9 @@ export default function ProfileScreen() {
   const [activeTab, setActiveTab] = useState("all");
   const [designerRating, setDesignerRating] = useState({ averageRating: 0, ratingCount: 0 });
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showRatingModal, setShowRatingModal] = useState(false);
 
+  // Fetch designer rating
   useEffect(() => {
     if (role === 'designer' && user?.uid) {
       const fetchRating = async () => {
@@ -203,6 +208,14 @@ export default function ProfileScreen() {
     <SafeAreaView style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={[styles.scrollContainer, { paddingBottom: 150 }]}>
         <View style={styles.mainContent}>
+          {showRatingModal && (
+            <RatingDetailsModal
+              isVisible={showRatingModal}
+              onClose={() => setShowRatingModal(false)}
+              rating={designerRating}
+              designerId={user?.uid}
+            />
+          )}
 
           <View style={styles.card}>
             <View style={styles.avatarContainer}>
@@ -260,15 +273,28 @@ export default function ProfileScreen() {
 
                 {role === 'designer' && (
                   <>
-                    <View style={styles.ratingContainer}>
-                      <MaterialIcons name="star" size={20} color="#FFD700" />
+                    <TouchableOpacity 
+                      style={styles.ratingContainer}
+                      onPress={() => setShowRatingModal(true)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.starsContainer}>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <MaterialIcons
+                            key={star}
+                            name="star"
+                            size={20}
+                            color={star <= Math.round(designerRating.averageRating) ? "#FFD700" : "#E2E8F0"}
+                          />
+                        ))}
+                      </View>
                       <Text style={styles.rating}>
                         {designerRating.averageRating.toFixed(1)}
                       </Text>
                       <Text style={styles.ratingCount}>
-                        ({designerRating.ratingCount} reviews)
+                        ({designerRating.ratingCount} {designerRating.ratingCount === 1 ? 'review' : 'reviews'})
                       </Text>
-                    </View>
+                    </TouchableOpacity>
 
                     <View style={styles.detailsContainer}>
                       <View style={styles.detailItem}>
@@ -320,6 +346,28 @@ export default function ProfileScreen() {
                     All Projects
                   </Text>
                 </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.tabBtn, activeTab === "in_progress" && styles.activeTab]}
+                  onPress={() => setActiveTab("in_progress")}
+                >
+                  <Text
+                    style={[styles.tabText, activeTab === "in_progress" && styles.activeText]}
+                  >
+                    In Progress
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.tabBtn, activeTab === "completed" && styles.activeTab]}
+                  onPress={() => setActiveTab("completed")}
+                >
+                  <Text
+                    style={[styles.tabText, activeTab === "completed" && styles.activeText]}
+                  >
+                    Completed
+                  </Text>
+                </TouchableOpacity>
               </View>
 
               {projects.length === 0 ? (
@@ -328,7 +376,35 @@ export default function ProfileScreen() {
                 </View>
               ) : (
                 <View style={styles.projectsList}>
-                  {/* قائمة المشاريع ستظهر هنا إذا وجدت */}
+                  {loadingProjects ? (
+                    <ActivityIndicator size="large" color="#C19A6B" style={{marginTop: 20}} />
+                  ) : (
+                    <View style={{paddingBottom: 20}}>
+                      {projects.map(item => (
+                        <TouchableOpacity 
+                          key={item.id}
+                          style={styles.projectCard}
+                          onPress={() => navigation.navigate('ProjectPage', { proposalId: item.id })}
+                        >
+                          <Image 
+                            source={{uri: item.referenceImageUrl || 'https://via.placeholder.com/150'}} 
+                            style={styles.projectImage}
+                          />
+                          <View style={styles.projectBadge}>
+                            <Text style={styles.projectBadgeText}>{item.status}</Text>
+                          </View>
+                          <View style={styles.projectInfo}>
+                            <Text style={styles.projectTitle}>{item.title}</Text>
+                            <Text style={styles.projectDescription} numberOfLines={2}>{item.description}</Text>
+                            <View style={styles.projectMeta}>
+                              <Text style={styles.projectPrice}>${item.price}</Text>
+                              <Text style={styles.projectClient}>{item.clientName}</Text>
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
                 </View>
               )}
             </>
@@ -364,6 +440,121 @@ export default function ProfileScreen() {
     </SafeAreaView>
   );
 }
+
+// Rating Details Modal Component
+const RatingDetailsModal = ({ isVisible, onClose, rating, designerId }) => {
+  const [ratings, setRatings] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (isVisible && designerId) {
+      setLoading(true);
+      // Fetch ratings for this designer
+      const ratingsRef = query(
+        collection(db, 'ratings'),
+        where('designerId', '==', designerId)
+      );
+
+      const unsubscribe = onSnapshot(ratingsRef, async (snapshot) => {
+        const ratingsData = await Promise.all(
+          snapshot.docs.map(async (doc) => {
+            const data = doc.data();
+            // Get client name
+            const clientRef = doc(db, 'users', data.clientId, 'profile', 'profileInfo');
+            const clientSnap = await getDoc(clientRef);
+            const clientName = clientSnap.exists() ? clientSnap.data().name : 'Client';
+            
+            return {
+              id: doc.id,
+              ...data,
+              clientName,
+              createdAt: data.createdAt?.toDate?.() || new Date()
+            };
+          })
+        );
+        
+        // Sort by date, newest first
+        ratingsData.sort((a, b) => b.createdAt - a.createdAt);
+        setRatings(ratingsData);
+        setLoading(false);
+      }, (error) => {
+        console.error("Error fetching ratings:", error);
+        setLoading(false);
+      });
+
+      return () => unsubscribe();
+    }
+  }, [isVisible, designerId]);
+
+  return (
+    <Modal
+      visible={isVisible}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Ratings & Reviews</Text>
+            <TouchableOpacity onPress={onClose}>
+              <MaterialIcons name="close" size={24} color="#333" />
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.modalRatingSummary}>
+            <Text style={styles.modalRatingNumber}>{rating.averageRating.toFixed(1)}</Text>
+            <View style={styles.modalStarsContainer}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <MaterialIcons
+                  key={star}
+                  name="star"
+                  size={24}
+                  color={star <= Math.round(rating.averageRating) ? "#FFD700" : "#E2E8F0"}
+                />
+              ))}
+            </View>
+            <Text style={styles.modalRatingCount}>
+              Based on {rating.ratingCount} {rating.ratingCount === 1 ? 'review' : 'reviews'}
+            </Text>
+          </View>
+          
+          <ScrollView style={styles.modalRatingsList}>
+            {loading ? (
+              <ActivityIndicator size="large" color="#C19A6B" style={{marginTop: 20}} />
+            ) : ratings.length > 0 ? (
+              ratings.map((item) => (
+                <View key={item.id} style={styles.ratingItem}>
+                  <View style={styles.ratingItemHeader}>
+                    <Text style={styles.ratingItemName}>{item.clientName}</Text>
+                    <Text style={styles.ratingItemDate}>
+                      {item.createdAt.toLocaleDateString()}
+                    </Text>
+                  </View>
+                  <View style={styles.ratingItemStars}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <MaterialIcons
+                        key={star}
+                        name="star"
+                        size={16}
+                        color={star <= item.rating ? "#FFD700" : "#E2E8F0"}
+                      />
+                    ))}
+                  </View>
+                  {item.comment && (
+                    <Text style={styles.ratingItemComment}>{item.comment}</Text>
+                  )}
+                </View>
+              ))
+            ) : (
+              <Text style={styles.noRatingsText}>No reviews yet</Text>
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+};
 
 const styles = StyleSheet.create({
   mainContent: {
@@ -449,6 +640,10 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 16,
   },
+  starsContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   rating: {
     fontSize: 20,
     fontWeight: "700",
@@ -459,6 +654,98 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#666666",
     marginLeft: 4,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  modalContent: {
+    backgroundColor: "white",
+    borderRadius: 16,
+    width: "100%",
+    maxHeight: "80%",
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#333",
+  },
+  modalRatingSummary: {
+    alignItems: "center",
+    marginBottom: 20,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+  },
+  modalRatingNumber: {
+    fontSize: 48,
+    fontWeight: "700",
+    color: "#333",
+  },
+  modalStarsContainer: {
+    flexDirection: "row",
+    marginVertical: 10,
+  },
+  modalRatingCount: {
+    fontSize: 14,
+    color: "#666",
+    marginTop: 5,
+  },
+  modalRatingsList: {
+    flex: 1,
+  },
+  ratingItem: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+  },
+  ratingItemHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  ratingItemName: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+  },
+  ratingItemDate: {
+    fontSize: 14,
+    color: "#666",
+  },
+  ratingItemStars: {
+    flexDirection: "row",
+    marginBottom: 8,
+  },
+  ratingItemComment: {
+    fontSize: 14,
+    color: "#333",
+    lineHeight: 20,
+  },
+  noRatingsText: {
+    textAlign: "center",
+    marginTop: 20,
+    fontSize: 16,
+    color: "#666",
   },
   detailsContainer: {
     marginBottom: 24,
@@ -620,6 +907,65 @@ const styles = StyleSheet.create({
   projectsList: {
     marginTop: 24,
     paddingHorizontal: 16,
+  },
+  projectCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    overflow: 'hidden',
+  },
+  projectImage: {
+    width: '100%',
+    height: 160,
+    resizeMode: 'cover',
+  },
+  projectBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    backgroundColor: '#C19A6B20',
+  },
+  projectBadgeText: {
+    color: '#C19A6B',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  projectInfo: {
+    padding: 16,
+  },
+  projectTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333333',
+    marginBottom: 8,
+  },
+  projectDescription: {
+    fontSize: 14,
+    color: '#666666',
+    marginBottom: 12,
+    lineHeight: 20,
+  },
+  projectMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  projectPrice: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#C19A6B',
+  },
+  projectClient: {
+    fontSize: 14,
+    color: '#666666',
   },
   avatarContainer: {
     position: 'relative',

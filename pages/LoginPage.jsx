@@ -177,13 +177,13 @@ function Salah() {
                       <MaterialIcons name="home" size={24} color="white" />
                     </Animated.View>
                     <Text style={styles.buttonText}>
-                      Log In...
+                      Sign In...
                     </Text>
                   </View>
                 ) : (
                   <View style={styles.buttonContent}>
                     <MaterialIcons name="home" size={24} color="white" />
-                    <Text style={styles.buttonText}>Log In</Text>
+                    <Text style={styles.buttonText}>Sign In</Text>
                   </View>
                 )}
               </TouchableOpacity>
