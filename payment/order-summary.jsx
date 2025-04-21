@@ -1,79 +1,66 @@
-import React from "react"
+import React, { useEffect } from "react"
 import { View, Text, StyleSheet, ActivityIndicator } from "react-native"
-import { Wallet, ArrowUpRight, ArrowDownRight } from "lucide-react-native"
+import { Wallet, ArrowUpRight, ArrowDownRight } from "lucide-react-native" // if using lucide-react-native
+import { useAuth } from "../firebase/auth"
+import { useBalance } from "../zustand/balance"
 
 const OrderSummary = () => {
-  // بيانات ثابتة
-  const balance = 1000.00
-  const isLoading = false
-  const role = "client" // أو "admin"
+  const { user, role } = useAuth()
+  const { balance, fetchBalance, isLoading } = useBalance()
+
+  useEffect(() => {
+    if (user && user.uid) {
+      fetchBalance(user.uid)
+    }
+  }, [user, fetchBalance])
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Balance Summary</Text>
+      <Text style={styles.heading}>Balance Summary</Text>
 
-      {/* Current Balance Section */}
-      <View style={styles.balanceContainer}>
-        <View style={styles.iconContainer}>
-          <Wallet style={styles.walletIcon} />
-        </View>
-        <Text style={styles.balanceLabel}>Current Balance</Text>
-        <Text style={styles.balanceAmount}>
-          {isLoading ? (
-            <ActivityIndicator size="small" color="#A67B5B" />
-          ) : (
-            `$${balance.toFixed(2)}`
-          )}
+      {/* Balance Box */}
+      <View style={styles.balanceBox}>
+        <Wallet color="#A67B5B" size={32} />
+        <Text style={styles.label}>Current Balance</Text>
+        <Text style={styles.balance}>
+          {isLoading ? <ActivityIndicator size="small" color="#A67B5B" /> : `$${balance.toFixed(2)}`}
         </Text>
-        <Text style={styles.balanceDescription}>
+        <Text style={styles.subText}>
           {role === "client"
             ? "Available for purchases and withdrawals"
             : "Available for withdrawals"}
         </Text>
       </View>
 
-      {/* Operation Info */}
+      {/* Operations Section */}
       <View style={styles.operationsContainer}>
-        <Text style={styles.operationsHeader}>Account Operations</Text>
-        
+        <Text style={styles.operationsHeading}>Account Operations</Text>
         {role === "client" ? (
           <>
-            <View style={styles.operationItem}>
-              <View style={styles.operationIconContainer}>
-                <ArrowUpRight style={styles.operationIcon} />
-              </View>
-              <View>
-                <Text style={styles.operationTitle}>Deposit</Text>
-                <Text style={styles.operationDescription}>Add funds to your balance using PayPal</Text>
-              </View>
-            </View>
-            
-            <View style={styles.operationItem}>
-              <View style={styles.operationIconContainer}>
-                <ArrowDownRight style={styles.operationIcon} />
-              </View>
-              <View>
-                <Text style={styles.operationTitle}>Withdraw</Text>
-                <Text style={styles.operationDescription}>Transfer funds from your balance to PayPal</Text>
-              </View>
-            </View>
+            <OperationItem
+              Icon={ArrowUpRight}
+              title="Deposit"
+              desc="Add funds to your balance using PayPal"
+            />
+            <OperationItem
+              Icon={ArrowDownRight}
+              title="Withdraw"
+              desc="Transfer funds from your balance to PayPal"
+            />
           </>
         ) : (
-          <View style={styles.operationItem}>
-            <View style={styles.operationIconContainer}>
-              <ArrowDownRight style={styles.operationIcon} />
-            </View>
-            <View>
-              <Text style={styles.operationTitle}>Withdraw</Text>
-              <Text style={styles.operationDescription}>Transfer funds from your balance to PayPal</Text>
-            </View>
-          </View>
+          <OperationItem
+            Icon={ArrowDownRight}
+            title="Withdraw"
+            desc="Transfer funds from your balance to PayPal"
+          />
         )}
       </View>
 
-      <View style={styles.secureTransactionsContainer}>
-        <Text style={styles.secureTransactionsHeader}>Secure Transactions</Text>
-        <Text style={styles.secureTransactionsDescription}>
+      {/* Security Info */}
+      <View style={styles.noticeBox}>
+        <Text style={styles.noticeTitle}>Secure Transactions</Text>
+        <Text style={styles.noticeText}>
           All financial operations are processed securely through PayPal's payment system.
         </Text>
       </View>
@@ -81,102 +68,105 @@ const OrderSummary = () => {
   )
 }
 
+const OperationItem = ({ Icon, title, desc }) => (
+  <View style={styles.operationItem}>
+    <View style={styles.iconWrapper}>
+      <Icon color="#fff" size={16} />
+    </View>
+    <View>
+      <Text style={styles.operationTitle}>{title}</Text>
+      <Text style={styles.operationDesc}>{desc}</Text>
+    </View>
+  </View>
+)
+
 const styles = StyleSheet.create({
   container: {
+    backgroundColor: "#fff",
     padding: 16,
-    backgroundColor: "white",
-    borderRadius: 8,
+    borderRadius: 12,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 3,
     marginTop: 16,
   },
-  header: {
-    fontSize: 24,
+  heading: {
+    fontSize: 20,
     fontWeight: "600",
     marginBottom: 16,
   },
-  balanceContainer: {
-    padding: 16,
+  balanceBox: {
+    alignItems: "center",
     backgroundColor: "#F5EFE7",
-    borderRadius: 8,
-    textAlign: "center",
+    padding: 24,
+    borderRadius: 12,
     marginBottom: 24,
   },
-  iconContainer: {
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  walletIcon: {
-    width: 32,
-    height: 32,
-    color: "#A67B5B",
-  },
-  balanceLabel: {
+  label: {
+    marginTop: 12,
+    fontSize: 16,
     fontWeight: "500",
-    marginBottom: 4,
   },
-  balanceAmount: {
-    fontSize: 32,
+  balance: {
+    fontSize: 28,
     fontWeight: "700",
     color: "#A67B5B",
-    marginBottom: 8,
+    marginVertical: 8,
   },
-  balanceDescription: {
+  subText: {
     fontSize: 12,
-    color: "#4B5563",
+    color: "#6B7280",
+    textAlign: "center",
   },
   operationsContainer: {
-    padding: 16,
+    padding: 12,
     borderWidth: 1,
     borderColor: "#E5E7EB",
-    borderRadius: 8,
-    marginBottom: 24,
+    borderRadius: 12,
+    marginBottom: 20,
   },
-  operationsHeader: {
+  operationsHeading: {
+    fontSize: 16,
     fontWeight: "500",
-    marginBottom: 16,
     textAlign: "center",
+    marginBottom: 16,
   },
   operationItem: {
     flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F3F4F6",
+    alignItems: "flex-start",
+    gap: 12,
     padding: 12,
-    borderRadius: 8,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 10,
     marginBottom: 12,
   },
-  operationIconContainer: {
+  iconWrapper: {
     backgroundColor: "#A67B5B",
     padding: 8,
-    borderRadius: 9999,
-    marginRight: 12,
-  },
-  operationIcon: {
-    color: "white",
-    width: 16,
-    height: 16,
+    borderRadius: 999,
   },
   operationTitle: {
     fontWeight: "500",
+    fontSize: 14,
+    marginBottom: 2,
   },
-  operationDescription: {
+  operationDesc: {
     fontSize: 12,
-    color: "#4B5563",
+    color: "#6B7280",
   },
-  secureTransactionsContainer: {
-    backgroundColor: "#E0F2FE",
+  noticeBox: {
+    backgroundColor: "#EFF6FF",
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 10,
   },
-  secureTransactionsHeader: {
-    fontWeight: "500",
-    marginBottom: 8,
+  noticeTitle: {
+    fontWeight: "600",
+    fontSize: 14,
+    marginBottom: 4,
     color: "#1D4ED8",
   },
-  secureTransactionsDescription: {
+  noticeText: {
     fontSize: 12,
     color: "#1D4ED8",
   },

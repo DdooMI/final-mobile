@@ -12,18 +12,18 @@ const CardDetailsForm = () => {
   const [errors, setErrors] = useState({})
 
   const handleChange = (name, value) => {
-    // Format card number with spaces
+    let updatedValue = value
+
     if (name === "cardNumber") {
-      const formattedValue = value
+      updatedValue = value
         .replace(/\s/g, "")
         .replace(/(\d{4})/g, "$1 ")
         .trim()
         .slice(0, 19)
 
-      setCardDetails({ ...cardDetails, [name]: formattedValue })
+      setCardDetails({ ...cardDetails, [name]: updatedValue })
 
-      // Validate card number
-      if (formattedValue.replace(/\s/g, "").length > 0 && !/^\d{4}\s\d{4}\s\d{4}\s\d{0,4}$/.test(formattedValue)) {
+      if (updatedValue.replace(/\s/g, "").length > 0 && !/^\d{4}\s\d{4}\s\d{4}\s\d{0,4}$/.test(updatedValue)) {
         setErrors({ ...errors, [name]: "Please enter a valid card number" })
       } else {
         const newErrors = { ...errors }
@@ -33,17 +33,15 @@ const CardDetailsForm = () => {
       return
     }
 
-    // Format expiry date
     if (name === "expiryDate") {
-      const formattedValue = value
+      updatedValue = value
         .replace(/\//g, "")
         .replace(/(\d{2})(\d{0,2})/, "$1/$2")
         .slice(0, 5)
 
-      setCardDetails({ ...cardDetails, [name]: formattedValue })
+      setCardDetails({ ...cardDetails, [name]: updatedValue })
 
-      // Validate expiry date
-      if (formattedValue.length > 0 && !/^\d{2}\/\d{2}$/.test(formattedValue)) {
+      if (updatedValue.length > 0 && !/^\d{2}\/\d{2}$/.test(updatedValue)) {
         setErrors({ ...errors, [name]: "Please enter a valid date (MM/YY)" })
       } else {
         const newErrors = { ...errors }
@@ -53,10 +51,8 @@ const CardDetailsForm = () => {
       return
     }
 
-    // Handle other fields
-    setCardDetails({ ...cardDetails, [name]: value })
+    setCardDetails({ ...cardDetails, [name]: updatedValue })
 
-    // Validate CVV
     if (name === "cvv") {
       if (value.length > 0 && !/^\d{3,4}$/.test(value)) {
         setErrors({ ...errors, [name]: "CVV must be 3 or 4 digits" })
@@ -67,7 +63,6 @@ const CardDetailsForm = () => {
       }
     }
 
-    // Validate cardholder name
     if (name === "cardholderName") {
       if (value.length > 0 && value.length < 3) {
         setErrors({ ...errors, [name]: "Please enter a valid name" })
@@ -80,52 +75,55 @@ const CardDetailsForm = () => {
   }
 
   return (
-    <View style={styles.formContainer}>
-      <View style={styles.inputContainer}>
+    <View style={styles.container}>
+      {/* Card Number */}
+      <View style={styles.inputGroup}>
         <Text style={styles.label}>Card Number</Text>
         <TextInput
-          style={[styles.input, errors.cardNumber && styles.errorInput]}
           placeholder="1234 5678 9012 3456"
-          value={cardDetails.cardNumber}
-          onChangeText={(value) => handleChange("cardNumber", value)}
           keyboardType="numeric"
+          value={cardDetails.cardNumber}
+          onChangeText={(text) => handleChange("cardNumber", text)}
+          style={[styles.input, errors.cardNumber && styles.errorInput]}
         />
         {errors.cardNumber && <Text style={styles.errorText}>{errors.cardNumber}</Text>}
       </View>
 
-      <View style={styles.inputContainer}>
+      {/* Cardholder Name */}
+      <View style={styles.inputGroup}>
         <Text style={styles.label}>Cardholder Name</Text>
         <TextInput
-          style={[styles.input, errors.cardholderName && styles.errorInput]}
           placeholder="John Doe"
           value={cardDetails.cardholderName}
-          onChangeText={(value) => handleChange("cardholderName", value)}
+          onChangeText={(text) => handleChange("cardholderName", text)}
+          style={[styles.input, errors.cardholderName && styles.errorInput]}
         />
         {errors.cardholderName && <Text style={styles.errorText}>{errors.cardholderName}</Text>}
       </View>
 
-      <View style={styles.rowContainer}>
-        <View style={styles.inputContainer}>
+      {/* Expiry Date & CVV */}
+      <View style={styles.row}>
+        <View style={[styles.inputGroup, styles.half]}>
           <Text style={styles.label}>Expiry Date</Text>
           <TextInput
-            style={[styles.input, errors.expiryDate && styles.errorInput]}
             placeholder="MM/YY"
-            value={cardDetails.expiryDate}
-            onChangeText={(value) => handleChange("expiryDate", value)}
             keyboardType="numeric"
+            value={cardDetails.expiryDate}
+            onChangeText={(text) => handleChange("expiryDate", text)}
+            style={[styles.input, errors.expiryDate && styles.errorInput]}
           />
           {errors.expiryDate && <Text style={styles.errorText}>{errors.expiryDate}</Text>}
         </View>
 
-        <View style={styles.inputContainer}>
+        <View style={[styles.inputGroup, styles.half]}>
           <Text style={styles.label}>CVV</Text>
           <TextInput
-            style={[styles.input, errors.cvv && styles.errorInput]}
             placeholder="123"
-            value={cardDetails.cvv}
-            onChangeText={(value) => handleChange("cvv", value)}
-            keyboardType="numeric"
             maxLength={4}
+            keyboardType="numeric"
+            value={cardDetails.cvv}
+            onChangeText={(text) => handleChange("cvv", text)}
+            style={[styles.input, errors.cvv && styles.errorInput]}
           />
           {errors.cvv && <Text style={styles.errorText}>{errors.cvv}</Text>}
         </View>
@@ -135,29 +133,25 @@ const CardDetailsForm = () => {
 }
 
 const styles = StyleSheet.create({
-  formContainer: {
-    padding: 20,
+  container: {
+    padding: 16,
+    backgroundColor: "#fff",
   },
-  inputContainer: {
-    marginBottom: 20,
+  inputGroup: {
+    marginBottom: 16,
   },
   label: {
     fontSize: 14,
-    fontWeight: "500",
     color: "#333",
-    marginBottom: 8,
+    marginBottom: 6,
   },
   input: {
-    width: "100%",
-    padding: 12,
     borderWidth: 1,
     borderColor: "#ccc",
+    padding: 10,
     borderRadius: 8,
     fontSize: 16,
-  },
-  rowContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+    backgroundColor: "#f9f9f9",
   },
   errorInput: {
     borderColor: "red",
@@ -166,6 +160,14 @@ const styles = StyleSheet.create({
     color: "red",
     fontSize: 12,
     marginTop: 4,
+  },
+  row: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  half: {
+    flex: 1,
+    marginRight: 8,
   },
 })
 

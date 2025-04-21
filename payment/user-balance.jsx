@@ -1,94 +1,131 @@
-import React, { useEffect } from "react"
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native"
-import { Wallet } from "lucide-react-native"
-import { useNavigation } from "@react-navigation/native"
-import { useAuth } from "../firebase/auth"
-import { useBalance } from "../zustand/balance"
+import React, { useEffect } from 'react'
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native'
+import { useNavigation } from '@react-navigation/native'
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons'
+import { useAuth } from '../firebase/auth'
+import { useBalance } from '../zustand/balance'
 
 const UserBalance = () => {
-  const navigation = useNavigation()
   const { user } = useAuth()
-  const { balance, isLoading, fetchBalance } = useBalance()
+  const { balance, fetchBalance, isLoading } = useBalance()
+  const navigation = useNavigation()
 
   useEffect(() => {
-    if (user?.uid) {
+    if (user && user.uid) {
       fetchBalance(user.uid)
     }
   }, [user, fetchBalance])
 
-  const handleManageFunds = () => {
-    navigation.navigate("payment")
+  const handleNavigateToPayment = () => {
+    navigation.navigate('payment')
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Account Balance</Text>
+      <View style={styles.card}>
+        <Text style={styles.title}>Account Balance</Text>
 
-      <View style={styles.balanceRow}>
-        <View style={styles.iconWrapper}>
-          <Wallet size={24} color="#A67B5B" />
+        <View style={styles.balanceContainer}>
+          <View style={styles.iconContainer}>
+            <Icon name="wallet" style={styles.icon} />
+          </View>
+          <View>
+            <Text style={styles.subtitle}>Available Balance</Text>
+            <Text style={styles.balance}>
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#A67B5B" />
+              ) : (
+                `$${(balance || 0).toFixed(2)}`
+              )}
+            </Text>
+          </View>
         </View>
-        <View>
-          <Text style={styles.label}>Available Balance</Text>
-          <Text style={styles.amount}>
-            ${isLoading ? "..." : balance.toFixed(2)}
-          </Text>
+
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity
+            onPress={handleNavigateToPayment}
+            style={styles.button}
+          >
+            <Icon name="wallet" style={styles.buttonIcon} />
+            <Text style={styles.buttonText}>Manage Funds</Text>
+          </TouchableOpacity>
         </View>
       </View>
-
-      <TouchableOpacity 
-        style={styles.manageFundsBtn} 
-        onPress={handleManageFunds}
-      >
-        <Text style={styles.manageFundsText}>Manage Funds</Text>
-      </TouchableOpacity>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
-    elevation: 4,
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#f8f8f8',
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    padding: 24,
+    width: '100%',
+    maxWidth: 380,
+    alignItems: 'center',
   },
   title: {
     fontSize: 20,
-    fontWeight: "600",
+    fontWeight: '600',
     marginBottom: 16,
   },
-  balanceRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 20,
+  balanceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
   },
-  iconWrapper: {
-    backgroundColor: "#F5EFE7",
+  iconContainer: {
+    backgroundColor: '#F5EFE7',
     padding: 12,
     borderRadius: 50,
-    marginRight: 12,
+    marginRight: 16,
   },
-  label: {
-    color: "#666",
-    fontSize: 14,
-  },
-  amount: {
+  icon: {
     fontSize: 24,
-    fontWeight: "bold",
+    color: '#A67B5B',
   },
-  manageFundsBtn: {
-    backgroundColor: "#C19A6B",
-    padding: 14,
-    borderRadius: 8,
-    alignItems: "center",
+  subtitle: {
+    fontSize: 14,
+    color: '#777',
+  },
+  balance: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#000',
+  },
+  buttonContainer: {
     marginTop: 16,
+    width: '100%',
   },
-  manageFundsText: {
-    color: "#fff",
-    fontWeight: "bold",
+  button: {
+    backgroundColor: '#A67B5B',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 8,
+    width: '100%',
+  },
+  buttonIcon: {
     fontSize: 16,
+    color: '#fff',
+    marginRight: 8,
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 })
 

@@ -1,11 +1,11 @@
 import React from "react"
-import { View, Text, ActivityIndicator, StyleSheet } from "react-native"
+import { View, ActivityIndicator, Text, StyleSheet } from "react-native"
 
-const LoadingIndicator = () => {
+const LoadingIndicator = ({ size = "small", color = "#6B7280", message = "Processing..." }) => {
   return (
-    <View style={styles.container}>
-      <ActivityIndicator size="small" color="#A67B5B" style={styles.spinner} />
-      <Text>Processing...</Text>
+    <View style={styles.container} accessibilityRole="status" accessibilityLiveRegion="polite">
+      <ActivityIndicator size={size} color={color} style={styles.spinner} />
+      <Text style={styles.message}>{message}</Text>
     </View>
   )
 }
@@ -15,9 +15,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    padding: 12,
   },
   spinner: {
     marginRight: 8,
+  },
+  message: {
+    fontSize: 16,
+    color: "#4B5563", // Tailwind gray-600
   },
 })
 

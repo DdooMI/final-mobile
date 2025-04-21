@@ -1,74 +1,52 @@
-import React, { useEffect, useState } from "react"
-import { View, Text, TouchableOpacity, StyleSheet, Animated } from "react-native"
-import { Check } from "lucide-react-native"
-import { useNavigation } from "@react-navigation/native"
+import React, { useEffect } from 'react'
+import { View, Text, StyleSheet, TouchableOpacity, Button, Alert } from 'react-native'
+import { useNavigation } from '@react-navigation/native'
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons'
 
-const SuccessConfirmation = ({ operationType = "deposit", amount = "50.00" }) => {
+const SuccessConfirmation = ({ operationType = 'deposit', amount = '50.00' }) => {
   const navigation = useNavigation()
-  const [scale] = useState(new Animated.Value(0)) // Start with scale 0 for animation
 
   useEffect(() => {
-    // Animate the checkmark to scale to 100% when the component mounts
-    Animated.spring(scale, {
-      toValue: 1,
-      friction: 3,
-      tension: 40,
-      useNativeDriver: true,
-    }).start()
-  }, [scale])
+    // Animation effect when component mounts
+    // تم حذف استخدام document.getElementById لأنه غير مدعوم في React Native
+  }, [])
 
-  const isDeposit = operationType === "deposit"
-  const title = isDeposit ? "Funds Added Successfully!" : "Withdrawal Successful!"
-  const message = isDeposit 
-    ? "Your funds have been added to your balance successfully. You can now use your balance for purchases or future withdrawals."
-    : "Your withdrawal has been processed successfully. The funds will be transferred to your PayPal account shortly."
+  const isDeposit = operationType === 'deposit'
+  const title = isDeposit ? 'Funds Added Successfully!' : 'Withdrawal Successful!'
+  const message = isDeposit
+    ? 'Your funds have been added to your balance successfully. You can now use your balance for purchases or future withdrawals.'
+    : 'Your withdrawal has been processed successfully. The funds will be transferred to your PayPal account shortly.'
 
   return (
     <View style={styles.container}>
       <View style={styles.card}>
         <View style={styles.checkmarkContainer}>
-          <Animated.View
-            style={[
-              styles.checkmark,
-              {
-                transform: [{ scale }],
-              },
-            ]}
-          >
-            <Check style={styles.checkIcon} />
-          </Animated.View>
+          <Icon name="check-circle" style={styles.checkmark} />
         </View>
 
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.message}>{message}</Text>
 
-        <View style={styles.transactionInfo}>
-          <View style={styles.transactionRow}>
-            <Text style={styles.transactionLabel}>Transaction ID:</Text>
-            <Text style={styles.transactionValue}>
-              TXN-{Math.random().toString(36).substring(2, 10).toUpperCase()}
-            </Text>
-          </View>
-          <View style={styles.transactionRow}>
-            <Text style={styles.transactionLabel}>
-              Amount {isDeposit ? "Added" : "Withdrawn"}:
-            </Text>
-            <Text style={styles.transactionValue}>${parseFloat(amount).toFixed(2)}</Text>
-          </View>
+        <View style={styles.transactionDetails}>
+          <Text style={styles.transactionLabel}>Transaction ID:</Text>
+          <Text style={styles.transactionId}>TXN-{Math.random().toString(36).substring(2, 10).toUpperCase()}</Text>
+          <Text style={styles.transactionLabel}>Amount {isDeposit ? 'Added' : 'Withdrawn'}:</Text>
+          <Text style={styles.amount}>${parseFloat(amount).toFixed(2)}</Text>
         </View>
 
-        <View style={styles.buttons}>
-          <TouchableOpacity 
+        <View style={styles.buttonsContainer}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Main', { screen: 'Profile' })}
             style={styles.viewBalanceButton}
-            onPress={() => navigation.navigate("Profile")}
           >
-            <Text style={styles.buttonText}>View Balance</Text>
+            <Text style={styles.buttonText}>View Profile</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
+
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Main')}
             style={styles.returnHomeButton}
-            onPress={() => navigation.navigate("Home")}
           >
-            <Text style={styles.buttonText}>Return to Home</Text>
+            <Text style={styles.returnButtonText}>Return to Home</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -79,89 +57,94 @@ const SuccessConfirmation = ({ operationType = "deposit", amount = "50.00" }) =>
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f9f9f9",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#f8f8f8',
   },
   card: {
-    backgroundColor: "white",
-    padding: 20,
-    borderRadius: 8,
-    shadowColor: "black",
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    shadowColor: '#000',
     shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-    width: "100%",
-    maxWidth: 400,
-    textAlign: "center",
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    padding: 24,
+    width: '100%',
+    maxWidth: 380,
+    alignItems: 'center',
   },
   checkmarkContainer: {
-    marginBottom: 20,
-    alignItems: "center",
-  },
-  checkmark: {
+    backgroundColor: '#A67B5B',
     width: 64,
     height: 64,
-    backgroundColor: "#A67B5B",
     borderRadius: 32,
-    justifyContent: "center",
-    alignItems: "center",
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
   },
-  checkIcon: {
-    width: 40,
-    height: 40,
-    color: "white",
+  checkmark: {
+    color: '#fff',
+    fontSize: 32,
   },
   title: {
     fontSize: 24,
-    fontWeight: "bold",
+    fontWeight: 'bold',
     marginBottom: 8,
   },
   message: {
     fontSize: 16,
-    color: "#6b6b6b",
-    marginBottom: 20,
+    color: '#777',
+    marginBottom: 24,
+    textAlign: 'center',
   },
-  transactionInfo: {
-    backgroundColor: "#f5f5f5",
+  transactionDetails: {
+    width: '100%',
+    padding: 16,
+    backgroundColor: '#f9f9f9',
     borderRadius: 8,
-    padding: 12,
-    marginBottom: 20,
-  },
-  transactionRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 8,
+    marginBottom: 24,
   },
   transactionLabel: {
-    color: "#6b6b6b",
+    fontSize: 14,
+    color: '#777',
   },
-  transactionValue: {
-    fontWeight: "bold",
+  transactionId: {
+    fontSize: 16,
+    fontWeight: 'bold',
   },
-  buttons: {
-    marginTop: 20,
+  amount: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  buttonsContainer: {
+    width: '100%',
+    paddingTop: 16,
   },
   viewBalanceButton: {
-    backgroundColor: "#A67B5B",
-    paddingVertical: 15,
+    backgroundColor: '#A67B5B',
+    paddingVertical: 12,
     borderRadius: 8,
     marginBottom: 12,
-    alignItems: "center",
+    alignItems: 'center',
   },
   returnHomeButton: {
-    backgroundColor: "white",
-    borderColor: "#ccc",
+    backgroundColor: '#fff',
     borderWidth: 1,
-    paddingVertical: 15,
+    borderColor: '#ccc',
+    paddingVertical: 12,
     borderRadius: 8,
-    alignItems: "center",
+    alignItems: 'center',
   },
   buttonText: {
+    color: '#fff',
     fontSize: 16,
-    color: "white",
-    fontWeight: "bold",
+    fontWeight: 'bold',
+  },
+  returnButtonText: {
+    color: '#555',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 })
 

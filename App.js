@@ -13,11 +13,13 @@ import MessageDetailPage from "./pages/MessageDetailPage";
 import MessagesPage from "./pages/MessagesPage";
 import ForgotPassword from "./pages/ForgotPasswordPage";
 import DesignerRequestsPage from "./DesignPages/DesignerRequestsPage";
+import SubmitProposalPage from "./DesignPages/SubmitProposalPage";
 import ProjectDetails from "./pages/ProjectPage";
 import PaymentPage from "./pages/PaymentPage";
 import AppBar from "./Components/AppBar";
 import ClientRequestsPage from "./DesignPages/ClientRequestsPage";
 import RequestDetailsPage from "./DesignPages/RequestDetailsPage";
+
 
 const Stack = createNativeStackNavigator();
 
@@ -137,6 +139,14 @@ export default function App() {
             options={{
               headerShown: true,
               header: () => <AppBar routeName="Request Details" />,
+            }}
+          />
+          <Stack.Screen
+            name="SubmitProposal"
+            component={SubmitProposalPage}
+            options={{
+              headerShown: true,
+              header: () => <AppBar routeName="Submit Proposal" />,
             }}
           />
         </Stack.Navigator>

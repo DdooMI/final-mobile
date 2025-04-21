@@ -194,8 +194,10 @@ export default function ProfileScreen() {
 
   const handleOurService = () => {
     setShowDropdown(false);
-    navigation.navigate("Services");
+    // Navigate to Our Service page
   };
+
+
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
@@ -248,9 +250,7 @@ export default function ProfileScreen() {
                     />
                   </>
                 )}
-                <TouchableOpacity style={styles.imagePicker} onPress={handleFileChange}>
-                  <Text style={{ color: "#555" }}>Choose Image</Text>
-                </TouchableOpacity>
+                
               </>
             ) : (
               <>

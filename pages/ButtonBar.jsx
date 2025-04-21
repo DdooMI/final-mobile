@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import Icon from "react-native-vector-icons/MaterialIcons";
+import { View, Text, StyleSheet } from "react-native";
 import ProfileScreen from "../pages/ProfilePage";
 import NotificationsPage from "../pages/NotificationsPage";
 import MessagesPage from "../pages/MessagesPage";
@@ -9,12 +10,32 @@ import ClientRequestsPage from "../DesignPages/ClientRequestsPage";
 import ClientDesignersPage from "../DesignPages/ClientDesignersPage";
 import DesignerRequestsPage from "../DesignPages/DesignerRequestsPage";
 import AppBar from "../Components/AppBar";
-import { useRoute } from "@react-navigation/native";
-import {useAuth} from "../firebase/auth"
+import { useAuth } from "../firebase/auth";
+import { useNotificationsStore } from "../zustand/notifications";
+import { useMessagesStore } from "../zustand/messages";
+
 const Tab = createBottomTabNavigator();
 
 export default function ButtonBar() {
-  const {role} = useAuth()  // جلب الـ role من الـ params
+  const { role, user } = useAuth();
+  const { unreadCount, initializeNotificationsListener } = useNotificationsStore();
+  const { unreadCount: unreadMessageCount, initializeUnreadMessagesListener } = useMessagesStore();
+  
+  // Set up notifications listener when user changes
+  useEffect(() => {
+    let notificationsUnsubscribe;
+    let messagesUnsubscribe;
+    
+    if (user && user.uid) {
+      notificationsUnsubscribe = initializeNotificationsListener(user.uid);
+      messagesUnsubscribe = initializeUnreadMessagesListener(user.uid);
+    }
+    
+    return () => {
+      if (notificationsUnsubscribe) notificationsUnsubscribe();
+      if (messagesUnsubscribe) messagesUnsubscribe();
+    };
+  }, [user, initializeNotificationsListener, initializeUnreadMessagesListener]);
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -25,8 +46,34 @@ export default function ButtonBar() {
             iconName = "person";
           } else if (route.name === "Notifications") {
             iconName = "notifications";
+            // Return icon with badge for notifications
+            return (
+              <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+                <Icon name={iconName} size={size} color={color} />
+                {unreadCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            );
           } else if (route.name === "Messages") {
             iconName = "message";
+            // Return icon with badge for messages
+            return (
+              <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+                <Icon name={iconName} size={size} color={color} />
+                {unreadMessageCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>
+                      {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            );
           } else if (route.name === "My Proposals") {
             iconName = "description";
           } else if (route.name === "Design Requests") {
@@ -75,3 +122,26 @@ export default function ButtonBar() {
     </Tab.Navigator>
   );
 }
+
+const styles = StyleSheet.create({
+  badge: {
+    position: 'absolute',
+    right: -6,
+    top: -3,
+    backgroundColor: '#ff3b30',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: '#fff',
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+});

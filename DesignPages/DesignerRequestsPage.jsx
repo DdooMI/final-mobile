@@ -12,333 +12,551 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView
+  SafeAreaView,
+  ActivityIndicator,
+  Image
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
+import { useAuth } from "../firebase/auth";
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  addDoc,
+  doc,
+  updateDoc,
+  serverTimestamp,
+} from "firebase/firestore";
+import { db } from "../firebase/firebaseConfig";
+import { createNotification } from "../firebase/notifications";
 
-const { height } = Dimensions.get('window');
+const { height, width } = Dimensions.get('window');
 
 function DesignerRequestsPage() {
   const navigation = useNavigation();
+  const { user } = useAuth();
   const [requests, setRequests] = useState([]);
-  const [proposals, setProposals] = useState({});
-  const [selectedRequest, setSelectedRequest] = useState(null);
-  const [price, setPrice] = useState("");
-  const [description, setDescription] = useState("");
-  const [duration, setDuration] = useState("2");
-  const [submittedProposals, setSubmittedProposals] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+
 
   useEffect(() => {
-    const dummyRequests = [
-      {
-        id: "1",
-        title: "make a simple office",
-        description: "I need a simple office design",
-        budget: 10,
-        roomType: "office",
-        status: "pending",
-        createdAt: "Posted 5 days ago",
-        clientEmail: "mohamed2@gmail.com"
-      },
-      {
-        id: "2",
-        title: "living room",
-        description: "I need a living room design",
-        budget: 10,
-        roomType: "living room",
-        status: "pending",
-        createdAt: "Posted 4 days ago",
-        clientEmail: "client2@example.com"
-      },
-    ];
-    
-    const dummyProposals = {
-      "1": [],
-      "2": [],
+    const fetchRequests = async () => {
+      try {
+        setLoading(true);
+        const q = query(
+          collection(db, "designRequests")
+        );
+        const querySnapshot = await getDocs(q);
+        const requestsData = [];
+
+        querySnapshot.forEach((doc) => {
+          requestsData.push({
+            id: doc.id,
+            ...doc.data(),
+            createdAtTimestamp: doc.data().createdAt ? doc.data().createdAt.toDate() : null,
+            createdAt: doc.data().createdAt
+              ? formatDistanceToNow(doc.data().createdAt.toDate(), { addSuffix: true })
+              : "Unknown date",
+          });
+        });
+
+        // Sort requests from newest to oldest
+        requestsData.sort((a, b) => {
+          // Handle cases where createdAt might be null
+          if (!a.createdAtTimestamp) return 1;
+          if (!b.createdAtTimestamp) return -1;
+          // Sort in descending order (newest first)
+          return b.createdAtTimestamp - a.createdAtTimestamp;
+        });
+
+        setRequests(requestsData);
+      } catch (err) {
+        setError("Failed to load requests: " + err.message);
+        console.error("Fetch error:", err);
+      } finally {
+        setLoading(false);
+      }
     };
 
-    setRequests(dummyRequests);
-    setProposals(dummyProposals);
+    fetchRequests();
   }, []);
 
-  const handleSubmitProposal = (requestId) => {
-    if (!price || !description) {
-      Alert.alert("Error", "Please fill all fields");
-      return;
-    }
-
-    const newProposal = {
-      id: `p${Date.now()}`,
-      designerEmail: "your-email@example.com",
-      description,
-      price: parseFloat(price),
-      estimatedTime: parseInt(duration),
-      status: "pending",
-      createdAt: formatDistanceToNow(new Date(), { addSuffix: true, locale: ar }),
+  const handleRequestPress = (request) => {
+    // Create a serializable version of the request object
+    const serializableRequest = {
+      ...request,
+      // Convert any Date objects to strings
+      createdAtTimestamp: request.createdAtTimestamp ? request.createdAtTimestamp.toString() : null,
+      // Handle any other non-serializable values
+      completedAt: request.completedAt ? {
+        seconds: request.completedAt.seconds,
+        nanoseconds: request.completedAt.nanoseconds
+      } : null
     };
-
-    setProposals(prev => ({
-      ...prev,
-      [requestId]: [...(prev[requestId] || []), newProposal]
-    }));
-
-    setSubmittedProposals(prev => [...prev, requestId]);
-    setPrice("");
-    setDescription("");
-    setDuration("2");
-
-    Alert.alert("Success", "Your proposal has been submitted successfully");
-    setSelectedRequest(null);
+    
+    navigation.navigate('SubmitProposal', { request: serializableRequest });
   };
 
-  const hasSubmittedProposal = (requestId) => {
-    return submittedProposals.includes(requestId);
+  const getStatusBadgeStyle = (status) => {
+    switch (status) {
+      case "pending":
+        return styles.pendingBadge;
+      case "accepted":
+        return styles.acceptedBadge;
+      case "rejected":
+        return styles.rejectedBadge;
+      case "completed":
+        return styles.completedBadge;
+      default:
+        return styles.defaultBadge;
+    }
+  };
+  
+  const getStatusTextStyle = (status) => {
+    switch (status) {
+      case "pending":
+        return styles.pendingText;
+      case "accepted":
+        return styles.acceptedText;
+      case "rejected":
+        return styles.rejectedText;
+      case "completed":
+        return styles.completedText;
+      default:
+        return styles.defaultText;
+    }
   };
 
   return (
-    <SafeAreaView style={styles.container}>  
-      <View style={styles.box}>
-        <Text style={styles.pageTitle}>Available Requests</Text>
-        <FlatList
-          data={requests}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={[styles.requestItem, selectedRequest?.id === item.id && styles.selectedItem]}
-              onPress={() => setSelectedRequest(item)}
-            >
-              <View style={styles.requestHeader}>
-                <Text style={styles.requestTitle}>{item.title}</Text>
-                <Text style={styles.status}>{item.status}</Text>
-              </View>
-              <View style={styles.detailsRow}>
-                <Text style={styles.detailText}>Budget: ${item.budget}</Text>
-                <Text style={styles.detailText}>Posted: {item.createdAt}</Text>
-              </View>
-              <View style={styles.detailsRow}>
-                <Text style={styles.detailText}>Room: {item.roomType}</Text>
-              </View>
-            </TouchableOpacity>
-          )}
-        />
-      </View>
-     
-      <Modal visible={!!selectedRequest} transparent animationType="slide">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.modalOverlay}
-        >
-          <View style={[styles.box, styles.modalContainer]}>
-            {selectedRequest && (
-              <>
-                {hasSubmittedProposal(selectedRequest.id) ? (
-                  <View style={styles.submittedContainer}>
-                    <Text style={styles.submittedTitle}>You've already submitted a proposal for this request</Text>
-                    <TouchableOpacity 
-                      style={styles.button} 
-                      onPress={() => setSelectedRequest(null)}
-                    >
-                      <Text style={styles.buttonText}>Close</Text>
-                    </TouchableOpacity>
+    <SafeAreaView style={styles.container}>
+      <Text style={styles.pageTitle}>Client Design Requests</Text>
+      
+      {error && (
+        <View style={styles.errorAlert}>
+          <Text style={styles.errorAlertText}>
+            <Text style={styles.boldText}>Error!</Text> {error}
+          </Text>
+        </View>
+      )}
+      
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#C19A6B" />
+        </View>
+      ) : requests.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>
+            No design requests available at the moment.
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.requestsContainer}>
+          <FlatList
+            data={requests}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.requestsListContent}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.requestItem}
+                onPress={() => handleRequestPress(item)}
+              >
+                <View style={styles.requestHeader}>
+                  <Text style={styles.requestTitle}>{item.title}</Text>
+                  <View style={getStatusBadgeStyle(item.status)}>
+                    <Text style={getStatusTextStyle(item.status)}>{item.status}</Text>
                   </View>
-                ) : (
-                  <ScrollView 
-                    contentContainerStyle={styles.scrollContent}
-                    keyboardShouldPersistTaps="handled"
-                  >
-                    <Text style={styles.modalTitle}>Submit a Proposal</Text>
-                    
-                    <View style={styles.requestInfoContainer}>
-                      <Text style={styles.requestTitleLarge}>{selectedRequest.title}</Text>
-                      <Text style={styles.requestDescription}>{selectedRequest.description}</Text>
-                      
-                      <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Budget:</Text>
-                        <Text style={styles.infoValue}>${selectedRequest.budget}</Text>
-                      </View>
-                      
-                      <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Room Type:</Text>
-                        <Text style={styles.infoValue}>{selectedRequest.roomType}</Text>
-                      </View>
-                      
-                      <View style={styles.divider} />
-                      
-                      <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Duration:</Text>
-                        <Text style={styles.infoValue}>{duration} days</Text>
-                      </View>
-                      
-                      <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Client:</Text>
-                        <Text style={styles.infoValue}>{selectedRequest.clientEmail}</Text>
-                      </View>
-                    </View>
-                    
-                    <Text style={styles.sectionTitle}>Your Price (USD)</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Enter your price"
-                      keyboardType="numeric"
-                      value={price}
-                      onChangeText={setPrice}
-                    />
-                    
-                    <Text style={styles.sectionTitle}>Proposal Description</Text>
-                    <TextInput
-                      style={[styles.input, styles.multilineInput]}
-                      placeholder="Describe your approach, ideas, and why you're the right designer for this project..."
-                      multiline
-                      numberOfLines={4}
-                      value={description}
-                      onChangeText={setDescription}
-                    />
-                    
-                    <Text style={styles.sectionTitle}>Estimated Time (days)</Text>
-                    <TextInput
-                      style={styles.input}
-                      keyboardType="numeric"
-                      value={duration}
-                      onChangeText={setDuration}
-                    />
-                    
-                    <TouchableOpacity 
-                      style={styles.submitButton} 
-                      onPress={() => handleSubmitProposal(selectedRequest.id)}
-                    >
-                      <Text style={styles.buttonText}>Submit Proposal</Text>
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity 
-                      style={styles.cancelButton} 
-                      onPress={() => setSelectedRequest(null)}
-                    >
-                      <Text style={styles.cancelButtonText}>Cancel</Text>
-                    </TouchableOpacity>
-                  </ScrollView>
-                )}
-              </>
+                </View>
+                <Text style={styles.requestDescription} numberOfLines={2}>
+                  {item.description}
+                </Text>
+                <View style={styles.detailsRow}>
+                  <Text style={styles.detailText}>Budget: ${item.budget}</Text>
+                  <Text style={styles.detailText}>Room: {item.roomType}</Text>
+                </View>
+                <Text style={styles.postedText}>Posted {item.createdAt}</Text>
+              </TouchableOpacity>
             )}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+          />
+        </View>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8f8f8", padding: 16 },
-  mainTitle: { fontSize: 24, fontWeight: "bold", marginBottom: 16, textAlign: "center" },
-  pageTitle: { fontSize: 20, fontWeight: "bold", marginBottom: 16, textAlign: "center" },
-  box: { backgroundColor: "#fff", padding: 16, borderRadius: 10, shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 10, elevation: 5, marginTop: 16 },
-  requestItem: { backgroundColor: "#fff", padding: 12, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: "#ddd" },
-  selectedItem: { borderColor: "#C19A6B", backgroundColor: "#F7F1E1" },
-  requestHeader: { flexDirection: "row", justifyContent: "space-between" },
-  requestTitle: { fontWeight: "bold", fontSize: 16, marginBottom: 8 },
-  status: { fontSize: 12, color: "#C19A6B" },
-  detailsRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 4 },
-  detailText: { color: "#777", fontSize: 12 },
-  modalOverlay: { 
+  container: { 
     flex: 1, 
-    backgroundColor: "rgba(0, 0, 0, 0.5)", 
-    justifyContent: "center", 
-    alignItems: "center" 
+    backgroundColor: "#f5f5f5", 
+    padding: 16 
   },
-  modalContainer: { 
-    width: "90%", 
-    maxHeight: height * 0.85,
-    paddingHorizontal: 16,
+  pageTitle: { 
+    fontSize: 24, 
+    fontWeight: "bold", 
+    marginBottom: 16, 
+    color: "#333" 
   },
-  scrollContent: {
-    paddingBottom: 30,
+  // Alert styles
+  successAlert: {
+    backgroundColor: "#e6f4ea",
+    borderWidth: 1,
+    borderColor: "#a8dab5",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16
   },
-  modalTitle: { fontSize: 20, fontWeight: "bold", marginBottom: 16, textAlign: "center" },
+  successAlertText: {
+    color: "#2e7d32",
+    fontSize: 14
+  },
+  errorAlert: {
+    backgroundColor: "#fdeded",
+    borderWidth: 1,
+    borderColor: "#f9c0c0",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16
+  },
+  errorAlertText: {
+    color: "#c62828",
+    fontSize: 14
+  },
+  boldText: {
+    fontWeight: "bold"
+  },
+  // Loading and empty states
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20
+  },
+  emptyContainer: {
+    backgroundColor: "#fff",
+    padding: 20,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3
+  },
+  emptyText: {
+    fontSize: 16,
+    color: "#666"
+  },
+  // Main content grid
+  contentGrid: {
+    flex: 1,
+    flexDirection: Platform.OS === "ios" ? "column" : width > 768 ? "row" : "column",
+    gap: 16
+  },
+  // Requests list styles
+  requestsContainer: {
+    flex: 1,
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    marginBottom: 12,
+    color: "#333"
+  },
+  requestsList: {
+    flex: 1
+  },
+  requestsListContent: {
+    paddingRight: 8
+  },
+  requestItem: {
+    borderWidth: 1,
+    borderColor: "#eee",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12
+  },
+  selectedItem: {
+    borderColor: "#C19A6B",
+    backgroundColor: "rgba(193, 154, 107, 0.05)"
+  },
+  requestHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 8
+  },
+  requestTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+    flex: 1,
+    marginRight: 8
+  },
+  // Status badge styles
+  pendingBadge: {
+    backgroundColor: "#fff9c4",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12
+  },
+  pendingText: {
+    color: "#f57f17",
+    fontSize: 12,
+    fontWeight: "500"
+  },
+  acceptedBadge: {
+    backgroundColor: "#e8f5e9",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12
+  },
+  acceptedText: {
+    color: "#2e7d32",
+    fontSize: 12,
+    fontWeight: "500"
+  },
+  rejectedBadge: {
+    backgroundColor: "#ffebee",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12
+  },
+  rejectedText: {
+    color: "#c62828",
+    fontSize: 12,
+    fontWeight: "500"
+  },
+  completedBadge: {
+    backgroundColor: "#e3f2fd",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12
+  },
+  completedText: {
+    color: "#1565c0",
+    fontSize: 12,
+    fontWeight: "500"
+  },
+  defaultBadge: {
+    backgroundColor: "#f5f5f5",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12
+  },
+  defaultText: {
+    color: "#757575",
+    fontSize: 12,
+    fontWeight: "500"
+  },
+  requestDescription: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 8
+  },
+  detailsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 4
+  },
+  detailText: {
+    fontSize: 13,
+    color: "#777"
+  },
+  postedText: {
+    fontSize: 12,
+    color: "#999",
+    marginTop: 4
+  },
+  // Proposal container styles
+  proposalContainer: {
+    flex: 1,
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3
+  },
   requestInfoContainer: {
     backgroundColor: "#f9f9f9",
     padding: 16,
     borderRadius: 8,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#eee",
+    borderColor: "#eee"
   },
   requestTitleLarge: {
     fontSize: 18,
     fontWeight: "bold",
     marginBottom: 8,
+    color: "#333"
   },
-  requestDescription: {
-    color: "#555",
-    marginBottom: 12,
-  },
-  infoRow: {
+  infoGrid: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 8,
+    flexWrap: "wrap",
+    marginTop: 12
+  },
+  infoItem: {
+    width: "50%",
+    marginBottom: 8
   },
   infoLabel: {
-    fontWeight: "bold",
-    color: "#555",
+    fontSize: 13,
+    color: "#666",
+    marginBottom: 2
   },
   infoValue: {
-    color: "#333",
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#333"
   },
-  divider: {
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-    marginVertical: 12,
+  // Reference image styles
+  referenceImageContainer: {
+    marginTop: 16
   },
-  sectionTitle: { 
-    fontWeight: "bold", 
-    marginTop: 12, 
-    marginBottom: 6,
-    color: "#555",
+  referenceImageLabel: {
+    fontSize: 14,
+    fontWeight: "500",
+    marginBottom: 8,
+    color: "#555"
   },
-  input: { 
-    borderWidth: 1, 
-    borderColor: "#ddd", 
-    borderRadius: 6, 
-    padding: 10, 
+  referenceImageWrapper: {
+    width: "100%",
+    height: 180,
+    borderRadius: 8,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#ddd"
+  },
+  referenceImage: {
+    width: "100%",
+    height: "100%"
+  },
+  zoomModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.85)",
+    justifyContent: "center",
+    alignItems: "center"
+  },
+  zoomImage: {
+    width: "90%",
+    height: "70%"
+  },
+  // Already proposed and completed request styles
+  alreadyProposedContainer: {
+    padding: 16,
+    backgroundColor: "#fff9c4",
+    borderRadius: 8,
+    marginTop: 8
+  },
+  alreadyProposedText: {
+    color: "#f57f17",
+    fontSize: 14
+  },
+  completedRequestContainer: {
+    padding: 16,
+    backgroundColor: "#f5f5f5",
+    borderRadius: 8,
+    marginTop: 8
+  },
+  completedRequestText: {
+    color: "#757575",
+    fontSize: 14
+  },
+  // Form styles
+  proposalForm: {
+    marginTop: 8
+  },
+  formRow: {
+    flexDirection: Platform.OS === "ios" ? "column" : width > 500 ? "row" : "column",
     marginBottom: 12,
-    backgroundColor: "#fff"
+    gap: 12
   },
-  multilineInput: { 
-    height: 100, 
-    textAlignVertical: "top" 
+  formColumn: {
+    flex: 1
   },
-  button: { 
-    backgroundColor: "#C19A6B", 
-    padding: 12, 
-    borderRadius: 8, 
-    alignItems: "center", 
-    marginTop: 16 
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: "500",
+    marginBottom: 6,
+    color: "#555"
   },
-  submitButton: { 
-    backgroundColor: "#C19A6B", 
-    padding: 12, 
-    borderRadius: 8, 
-    alignItems: "center", 
-    marginTop: 16 
+  input: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: "#fff",
+    fontSize: 14,
+    color: "#333"
   },
-  cancelButton: { 
-    padding: 12, 
-    borderRadius: 8, 
-    alignItems: "center", 
-    marginTop: 8 
+  multilineInput: {
+    height: 120,
+    textAlignVertical: "top"
   },
-  cancelButtonText: { 
-    color: "#777", 
-    fontWeight: "bold" 
+  buttonContainer: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: 16,
+    gap: 12
   },
-  buttonText: { color: "#fff", fontWeight: "bold" },
-  submittedContainer: { alignItems: "center", padding: 20 },
-  submittedTitle: { 
-    fontSize: 16, 
-    textAlign: "center", 
-    marginBottom: 20,
-    color: "#4CAF50"
+  cancelButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    alignItems: "center",
+    justifyContent: "center"
   },
+  cancelButtonText: {
+    color: "#666",
+    fontWeight: "500",
+    fontSize: 14
+  },
+  submitButton: {
+    backgroundColor: "#C19A6B",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  disabledButton: {
+    opacity: 0.7
+  },
+  buttonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 14
+  },
+  // No selection state
+  noSelectionContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20
+  },
+  noSelectionText: {
+    color: "#999",
+    fontSize: 15,
+    textAlign: "center"
+  }
 });
 
 export default DesignerRequestsPage;
