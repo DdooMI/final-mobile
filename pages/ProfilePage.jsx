@@ -168,39 +168,37 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      await logout();
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Login' }],
-      });
-    } catch (error) {
-      console.error("Logout error:", error);
-      Alert.alert('Error', 'Failed to logout. Please try again.');
-    }
+  const handleLogout = () => {
+    // Show confirmation alert before logging out
+    Alert.alert(
+      'Confirm Logout',
+      'Are you sure you want to logout?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Yes, Logout',
+          onPress: async () => {
+            try {
+              // Perform the logout operation
+              await logout(navigation);
+
+              // Manually handle navigation to login screen
+             
+            } catch (error) {
+              console.error("Logout error:", error);
+              Alert.alert('Error', 'Failed to logout. Please try again.');
+            }
+          },
+        },
+      ],
+      { cancelable: true }
+    );
   };
 
-  // Toggle dropdown visibility
-  const toggleDropdown = () => {
-    setShowDropdown(!showDropdown);
-  };
 
-  // Navigation handlers for dropdown options
-  const handleAboutUs = () => {
-    setShowDropdown(false);
-    navigation.navigate("About");
-  };
-
-  const handleContactUs = () => {
-    setShowDropdown(false);
-    navigation.navigate("Contact");
-  };
-
-  const handleOurService = () => {
-    setShowDropdown(false);
-    // Navigate to Our Service page
-  };
 
 
 
@@ -263,7 +261,7 @@ export default function ProfileScreen() {
                     />
                   </>
                 )}
-                
+
               </>
             ) : (
               <>
@@ -273,7 +271,7 @@ export default function ProfileScreen() {
 
                 {role === 'designer' && (
                   <>
-                    <TouchableOpacity 
+                    <TouchableOpacity
                       style={styles.ratingContainer}
                       onPress={() => setShowRatingModal(true)}
                       activeOpacity={0.7}
@@ -346,7 +344,7 @@ export default function ProfileScreen() {
                     All Projects
                   </Text>
                 </TouchableOpacity>
-                
+
                 <TouchableOpacity
                   style={[styles.tabBtn, activeTab === "in_progress" && styles.activeTab]}
                   onPress={() => setActiveTab("in_progress")}
@@ -357,7 +355,7 @@ export default function ProfileScreen() {
                     In Progress
                   </Text>
                 </TouchableOpacity>
-                
+
                 <TouchableOpacity
                   style={[styles.tabBtn, activeTab === "completed" && styles.activeTab]}
                   onPress={() => setActiveTab("completed")}
@@ -377,17 +375,17 @@ export default function ProfileScreen() {
               ) : (
                 <View style={styles.projectsList}>
                   {loadingProjects ? (
-                    <ActivityIndicator size="large" color="#C19A6B" style={{marginTop: 20}} />
+                    <ActivityIndicator size="large" color="#C19A6B" style={{ marginTop: 20 }} />
                   ) : (
-                    <View style={{paddingBottom: 20}}>
+                    <View style={{ paddingBottom: 20 }}>
                       {projects.map(item => (
-                        <TouchableOpacity 
+                        <TouchableOpacity
                           key={item.id}
                           style={styles.projectCard}
                           onPress={() => navigation.navigate('ProjectPage', { proposalId: item.id })}
                         >
-                          <Image 
-                            source={{uri: item.referenceImageUrl || 'https://via.placeholder.com/150'}} 
+                          <Image
+                            source={{ uri: item.referenceImageUrl || 'https://via.placeholder.com/150' }}
                             style={styles.projectImage}
                           />
                           <View style={styles.projectBadge}>
@@ -412,24 +410,6 @@ export default function ProfileScreen() {
 
         </View>
         <View style={[styles.bottomButtonsContainer, { position: 'absolute', bottom: 0 }]}>
-          <TouchableOpacity style={styles.button} onPress={toggleDropdown}>
-            <Text style={styles.buttonText}>More About Us</Text>
-          </TouchableOpacity>
-
-          {showDropdown && (
-            <View style={[styles.dropdownMenu, { bottom: 120 }]}>
-              <TouchableOpacity style={styles.dropdownItem} onPress={handleAboutUs}>
-                <Text style={styles.dropdownText}>About Us</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.dropdownItem} onPress={handleContactUs}>
-                <Text style={styles.dropdownText}>Contact Us</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.dropdownItem} onPress={handleOurService}>
-                <Text style={styles.dropdownText}>Our Service</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
           <TouchableOpacity style={[styles.button, { marginTop: 10 }]} onPress={handleLogout}>
             <Text style={styles.buttonText}>Log Out</Text>
           </TouchableOpacity>
@@ -463,7 +443,7 @@ const RatingDetailsModal = ({ isVisible, onClose, rating, designerId }) => {
             const clientRef = doc(db, 'users', data.clientId, 'profile', 'profileInfo');
             const clientSnap = await getDoc(clientRef);
             const clientName = clientSnap.exists() ? clientSnap.data().name : 'Client';
-            
+
             return {
               id: doc.id,
               ...data,
@@ -472,7 +452,7 @@ const RatingDetailsModal = ({ isVisible, onClose, rating, designerId }) => {
             };
           })
         );
-        
+
         // Sort by date, newest first
         ratingsData.sort((a, b) => b.createdAt - a.createdAt);
         setRatings(ratingsData);
@@ -501,7 +481,7 @@ const RatingDetailsModal = ({ isVisible, onClose, rating, designerId }) => {
               <MaterialIcons name="close" size={24} color="#333" />
             </TouchableOpacity>
           </View>
-          
+
           <View style={styles.modalRatingSummary}>
             <Text style={styles.modalRatingNumber}>{rating.averageRating.toFixed(1)}</Text>
             <View style={styles.modalStarsContainer}>
@@ -518,10 +498,10 @@ const RatingDetailsModal = ({ isVisible, onClose, rating, designerId }) => {
               Based on {rating.ratingCount} {rating.ratingCount === 1 ? 'review' : 'reviews'}
             </Text>
           </View>
-          
+
           <ScrollView style={styles.modalRatingsList}>
             {loading ? (
-              <ActivityIndicator size="large" color="#C19A6B" style={{marginTop: 20}} />
+              <ActivityIndicator size="large" color="#C19A6B" style={{ marginTop: 20 }} />
             ) : ratings.length > 0 ? (
               ratings.map((item) => (
                 <View key={item.id} style={styles.ratingItem}>
@@ -592,9 +572,9 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: "#FFFFFF",
     borderRadius: 24,
-    padding:24,
+    padding: 24,
     marginHorizontal: 16,
-    
+
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
@@ -606,7 +586,7 @@ const styles = StyleSheet.create({
     height: 140,
     borderRadius: 70,
     alignSelf: "center",
-    
+
     borderWidth: 4,
     borderColor: "#C19A6B",
     backgroundColor: "#F5F5F5",
@@ -627,7 +607,7 @@ const styles = StyleSheet.create({
   bio: {
     fontSize: 16,
     color: "#4A5568",
-    textAlign: "center",                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
+    textAlign: "center",
     lineHeight: 24,
     paddingHorizontal: 16,
   },

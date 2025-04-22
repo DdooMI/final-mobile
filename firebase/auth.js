@@ -25,7 +25,7 @@ export const useAuth = create((set, get) => ({
         AsyncStorage.getItem('role'),
         AsyncStorage.getItem('profile')
       ]);
-      
+
       set({
         user: user ? JSON.parse(user) : null,
         token: token || "",
@@ -46,7 +46,7 @@ export const useAuth = create((set, get) => ({
         data.password
       )
       const user = res.user;
-      
+
       if (!user.emailVerified) {
         Alert.alert('Error', 'Please verify your email before logging in. Check your inbox for the verification email or request a new one.');
         return
@@ -55,7 +55,7 @@ export const useAuth = create((set, get) => ({
       const token = await user.getIdToken();
       const userRef = doc(db, "users", user.uid);
       const userSnap = await getDoc(userRef);
-      
+
       // Update email verification status in Firestore
       await updateDoc(userRef, {
         emailVerified: true
@@ -83,9 +83,9 @@ export const useAuth = create((set, get) => ({
           error: null,
         });
 
-       
+
         navigation.navigate('Main');
-        
+
       } else {
         throw new Error("User role not found.");
       }
@@ -117,7 +117,7 @@ export const useAuth = create((set, get) => ({
         data.password
       );
       const user = res.user;
-      
+
       // Send email verification
       await sendEmailVerification(user);
 
@@ -135,7 +135,7 @@ export const useAuth = create((set, get) => ({
       };
       await setDoc(profileRef, profileData);
 
-      set({ 
+      set({
         user: null,
         token: null,
         role: null,
@@ -205,6 +205,10 @@ export const useAuth = create((set, get) => ({
     await AsyncStorage.removeItem("profile");
 
     set({ user: null, token: "", role: null, profile: null, error: null });
-    navigation.navigate('Login');
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Login' }],
+    });
+
   },
 }));
